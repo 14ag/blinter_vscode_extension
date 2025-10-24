@@ -1,0 +1,123 @@
+read https://github.com/tboy1337/Blinter
+
+Project: Blinter VS Code Extension
+1. High-Level Goal
+Create a professional-grade Visual Studio Code extension that seamlessly integrates the "Blinter" linter for batch scripts (.bat, .cmd). The extension must provide a user experience on par with popular linters like ESLint or Pylint, offering automatic feedback, configuration, and helpful UI components. The Blinter tool is located at: https://github.com/tboy1337/Blinter
+
+2. Core User Experience & Features
+a. Automatic & On-Demand Linting
+Automatic Linting (Core Feature): The extension should automatically lint files to provide real-time feedback. This should be configurable to run:
+onSave: When the user saves the file (default behavior).
+onType: As the user types, with a configurable delay (debounce) to prevent excessive runs.
+On-Demand Linting: The user must also be able to trigger a linting pass manually. This command (blinter.run) should be accessible from:
+The Command Palette (Ctrl+Shift+P).
+A button in the Blinter side panel view.
+The editor's right-click context menu.
+b. User Configuration (settings.json)
+To give users full control, the extension must contribute the following settings to settings.json:
+blinter.enabled: A boolean to enable or disable the linter entirely.
+blinter.runOn: A string ("onSave" or "onType") to control when linting occurs.
+blinter.debounceDelay: A number (in milliseconds) for the onType delay.
+blinter.pythonPath: An optional string path to a specific Python executable. If not set, it should default to a general python command.
+blinter.rulesPath: An optional string path to a custom rules.json file, allowing users to override the bundled rules.
+c. Rich UI Integration
+Activity Bar Icon & View: An icon should appear in the Activity Bar only when a .bat or .cmd file is active ("when": "resourceLangId == bat"). Clicking it opens a simple view containing the "Run Blinter" button.
+Status Bar Item: A status bar item (Blinter) should be visible when a batch file is open.
+It should show a spinning icon ($(sync~spin)) while linting is in progress.
+It should show a checkmark ($(check)) if linting completes with no errors, and an error icon ($(error)) if problems are found.
+Clicking the status bar item should open the "Problems" panel.
+Output Channel: For debugging and transparency, create a dedicated "Output Channel" named "Blinter". The extension should log the raw command being executed, the full output from blinter.py, and any internal errors here.
+d. Advanced: Quick Fixes (Code Actions)
+For a truly advanced experience, the extension should provide "Quick Fixes" for certain diagnostic errors.
+Implement a CodeActionProvider that suggests automatic fixes for simple, unambiguous rules.
+Example Idea: If Blinter has a rule for "inconsistent command casing" (e.g., flags eChO), a Quick Fix could suggest changing it to the standard echo. (This is a speculative rule, but illustrates the concept).
+3. Linter Execution & Diagnostics
+a. Execution Logic
+The blinter.py script and its default rules.json must be bundled within the extension. The extension should be self-contained and not require a separate user installation of Blinter.
+It must run blinter.py as a child process, respecting the blinter.pythonPath and blinter.rulesPath settings if they are configured.
+Robust Error Handling: The extension must gracefully handle cases where Python isn't installed or the script crashes, showing an informative message to the user once.
+b. Diagnostics and Problems
+The extension must parse the stdout from the Blinter script ([SEVERITY] (CODE) -> DESCRIPTION on line LINE_NUMBER).
+Map Blinter severities to vscode.DiagnosticSeverity: INFO -> Information, WARN -> Warning, ERROR/FATAL -> Error.
+Create a vscode.Diagnostic for each reported issue and publish them to a DiagnosticCollection. This populates the "Problems" panel and creates editor squiggles.
+The diagnostics for a file must be cleared before each new linting run.
+4. Technical Specification (package.json outline)
+{
+ "name": "vscode-blinter",
+ "displayName": "Blinter",
+ "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes.",
+ "publisher": "your-name-here",
+ "version": "1.0.0",
+ "engines": { "vscode": "^1.75.0" },
+ "categories": ["Linters"],
+ "activationEvents": ["onLanguage:bat"],
+ "main": "./extension.js",
+ "contributes": {
+   "commands": [
+     {
+       "command": "blinter.run",
+       "title": "Run Blinter on Active File"
+     }
+   ],
+   "menus": {
+     "editor/context": [
+       {
+         "when": "resourceLangId == bat",
+         "command": "blinter.run",
+         "group": "navigation"
+       }
+     ]
+   },
+   "viewsContainers": {
+     "activitybar": [
+       {
+         "id": "blinter-sidebar",
+         "title": "Blinter",
+         "icon": "icons/blinter-logo.svg",
+         "when": "resourceLangId == bat"
+       }
+     ]
+   },
+   "views": {
+     "blinter-sidebar": [
+       {
+         "id": "blinter.view",
+         "name": "Blinter Actions"
+       }
+     ]
+   },
+   "configuration": {
+     "title": "Blinter",
+     "properties": {
+       "blinter.enabled": {
+         "type": "boolean",
+         "default": true,
+         "description": "Enable/disable Blinter."
+       },
+       "blinter.runOn": {
+         "type": "string",
+         "enum": ["onSave", "onType"],
+         "default": "onSave",
+         "description": "Run the linter on save or as you type."
+       },
+       "blinter.debounceDelay": {
+         "type": "number",
+         "default": 500,
+         "description": "Delay in milliseconds for onType linting."
+       },
+       "blinter.pythonPath": {
+           "type": ["string", "null"],
+           "default": null,
+           "description": "Path to the Python executable."
+       },
+       "blinter.rulesPath": {
+           "type": ["string", "null"],
+           "default": null,
+           "description": "Path to a custom rules.json file."
+       }
+     }
+   }
+ }
+}
+
+create a txt file called 'progress'. update it after every step in such a way that the info here can be used by different agents with no context to take over, understand everything and proceed with the project from where the previous session ended. if attempted to run unit tests and lint in this environment, but the run outputs were empty maybe because the environment likely doesn't run npm commands here, create a batch script to runs these commands and redirect the stdout and stderr to project_logs.log file. use command `cmd` with the appropriate params to execute the script and await completion. option 2, ask user to execute the commands while redirecting output to project_logs.log then await confirmation to read project_logs.log. from the project_logs.log, gather and store insights then clear the project_logs.log file

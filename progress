@@ -1,0 +1,128 @@
+# Blinter extension progress
+
+version: 1
+
+repository: Blinter VS Code extension (local workspace)
+root: c:\Users\philip\sauce\blinter_vscode_extension
+
+owner: unspecified
+
+last_updated: 2025-10-22T00:00:00Z
+
+current_state:
+- small single-file VS Code extension implemented in CommonJS JavaScript
+- existing command: blinter.helloWorld (defined in package.json + extension.js)
+- tests: minimal mocha test in test/extension.test.js using vscode test runner
+- linter: eslint with config in eslint.config.mjs
+
+goals:
+1. Implement a production-grade Blinter integration per project spec (automatic/on-demand linting, UI, settings, diagnostics, quick fixes)
+
+next_actions (actionable steps for next agent):
+1. Update `package.json` to add activationEvents, `blinter.run` command, menus, viewsContainers/views, and configuration properties per project spec in `project.txt`.
+2. Modify `extension.js` to register `blinter.run` command and scaffold: OutputChannel 'Blinter', StatusBarItem, DiagnosticCollection, and a stubed runner that can execute an external blinter script.
+3. Add or bundle `blinter.py` and default `rules.json` under an `assets/` directory, or add instructions to obtain them from https://github.com/tboy1337/Blinter.
+4. Run `npm run lint` and `npm test`, fix issues, and iterate.
+
+notes:
+- No existing `.github/copilot-instructions.md` prior to this session; a canonical one was added.
+- The user asked for a `progress` file to be updated after every step to allow handoff between agents.
+
+history:
+- created by agent on 2025-10-22: initial state recorded and next actions enumerated
+
+- step_2025-10-22-1:
+	description: Updated `package.json` to add activationEvents (onLanguage:bat), `blinter.run` command, editor context menu entry, activity bar view container and configuration properties (blinter.enabled, blinter.runOn, blinter.debounceDelay, blinter.pythonPath, blinter.rulesPath).
+	files_changed:
+		- package.json: contributed commands, menus, viewsContainers, views, configuration
+	actor: automated-agent
+
+	- step_2025-10-24-6:
+		description: Added GitHub Actions CI workflow `.github/workflows/ci.yml` to run lint + unit tests and a separate job to run the VS Code test harness and package a VSIX. Added `test/runTest.js` and updated `package.json` scripts and devDependencies to support integration testing and packaging.
+		files_changed:
+			- .github/workflows/ci.yml
+			- test/runTest.js
+			- package.json
+		actor: automated-agent
+
+		- step_2025-10-24-7:
+			description: Fixed parser unit test to use Mocha BDD interface (describe/it) so it runs with default Mocha. Updated `test/runTest.js` to accept `VSCODE_VERSION` environment variable and updated CI workflow to run integration tests against VS Code Insiders and added a `publish-release` job to create a GitHub Release and upload the `blinter.vsix` on tag pushes.
+			files_changed:
+				- test/parser.test.js
+				- test/runTest.js
+				- .github/workflows/ci.yml
+			actor: automated-agent
+
+- step_2025-10-22-2:
+	description: Implemented scaffolding in `extension.js`:
+		- created OutputChannel 'Blinter'
+		- created Diagnostics collection 'blinter'
+		- created StatusBarItem that appears for `bat` files and ties to `blinter.run`
+		- registered `blinter.run` command with a stub runner that logs and creates example diagnostics when it finds marker text `TODO_BLINTER_ERROR` in an open file
+	files_changed:
+		- extension.js: registered commands, status bar, diagnostics, output channel, stub runner
+	actor: automated-agent
+
+	- step_2025-10-22-3:
+		description: Replaced stubbed runner with a real runner in `extension.js` that:
+			- attempts to locate `assets/blinter.py` (or `blinter.py` in extension root)
+			- runs the script using configured `blinter.pythonPath` (defaults to `python`)
+			- supports optional `blinter.rulesPath` argument
+			- parses stdout lines matching "[SEVERITY] (CODE) -> DESCRIPTION on line LINE_NUMBER" into `vscode.Diagnostic`s
+			- maps severities: INFO -> Information, WARN -> Warning, ERROR/FATAL -> Error
+			- publishes diagnostics to the `blinter` DiagnosticCollection
+			- shows output and stderr in the 'Blinter' Output channel
+			- updates the status bar with spinner/check/error icons
+			- adds automatic triggers: `onSave` and debounced `onType` based on `blinter.runOn` and `blinter.debounceDelay` settings
+		files_changed:
+			- extension.js: full runner implementation and event hooks
+		actor: automated-agent
+
+		- step_2025-10-22-4:
+			description: Prefer bundled native executable when available (bin/blinter.exe for Windows). Runner now:
+				- checks `bin/blinter.exe` (on Windows) or `bin/blinter` (on other platforms) first
+				- falls back to `assets/blinter.py` or `blinter.py` at extension root
+			files_changed:
+				- extension.js: prefer native executable and adjust spawn args
+			actor: automated-agent
+
+next_actions:
+- Implement actual blinter runner that executes bundled `blinter.py` (or download instruction) and parse stdout into diagnostics.
+- Add Activity Bar view content and a 'Run Blinter' button in the view (views UI file additions).
+- Add unit/integration tests around the new `blinter.run` command and diagnostic parsing.
+
+- step_2025-10-24-1:
+	description: Added parser utility (`lib/parser.js`) and unit tests (`test/parser.test.js`) to validate stdout parsing logic.
+	files_changed:
+		- lib/parser.js
+		- test/parser.test.js
+	actor: automated-agent
+
+- step_2025-10-24-2:
+	description: Implemented CodeActionProvider for quick fixes (normalizes first token casing) and registered a WebviewViewProvider for `blinter.view` with a Run button.
+	files_changed:
+		- extension.js
+	actor: automated-agent
+
+- step_2025-10-24-3:
+	description: Added `PACKAGING.md` with packaging instructions and a minimal integration test `test/integration.test.js` that asserts `blinter.run` is registered.
+	files_changed:
+		- PACKAGING.md
+		- test/integration.test.js
+	actor: automated-agent
+
+- step_2025-10-24-4:
+	description: Reduced ESLint noise by adding `.eslintignore` to exclude `node_modules/` and `.vscode-test/`. Added `blinter.quickFixCodes` configuration and hardened CodeActionProvider to only offer quick-fixes for configured codes or messages mentioning casing.
+	files_changed:
+		- .eslintignore
+		- package.json
+		- extension.js
+	actor: automated-agent
+
+- step_2025-10-24-5:
+	description: Restricted `test:unit` npm script to run only `test/parser.test.js` to avoid running `test/extension.test.js` (which requires the VS Code test environment). This prevents "Cannot find module 'vscode'" when running unit tests with plain Mocha.
+	files_changed:
+		- package.json
+	actor: automated-agent
+
+

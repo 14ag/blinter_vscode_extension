@@ -1,0 +1,109 @@
+{
+  "name": "blinter",
+  "displayName": "blinter",
+  "description": "linter for batch",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": ["onLanguage:bat"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "blinter.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "blinter.run",
+        "title": "Run Blinter on Active File"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceLangId == bat",
+          "command": "blinter.run",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "blinter-sidebar",
+          "title": "Blinter",
+          "icon": "icons/blinter-logo.svg",
+          "when": "resourceLangId == bat"
+        }
+      ]
+    },
+    "views": {
+      "blinter-sidebar": [
+        {
+          "id": "blinter.view",
+          "name": "Blinter Actions"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Blinter",
+      "properties": {
+        "blinter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable Blinter."
+        },
+        "blinter.runOn": {
+          "type": "string",
+          "enum": ["onSave", "onType"],
+          "default": "onSave",
+          "description": "Run the linter on save or as you type."
+        },
+        "blinter.debounceDelay": {
+          "type": "number",
+          "default": 500,
+          "description": "Delay in milliseconds for onType linting."
+        },
+        "blinter.pythonPath": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Path to the Python executable."
+        },
+        "blinter.rulesPath": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Path to a custom rules.json file."
+        }
+      ,
+        "blinter.quickFixCodes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["BLINTER_CASE","CMD_CASE","CASE001"],
+          "description": "List of Blinter diagnostic codes for which quick fixes (command-casing) are offered."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test",
+    "test:unit": "mocha test/parser.test.js",
+    "test:integration": "node ./test/runTest.js",
+    "package:vsix": "npx vsce package --out blinter.vsix"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.105.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "eslint": "^9.36.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "mocha": "^10.2.0",
+    "vsce": "^2.10.0"
+  }
+}
