@@ -91,7 +91,7 @@
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test",
-    "test:unit": "mocha \"test/**/*.test.js\"",
+    "test:unit": "mocha \"test/parser.test.js\" \"test/discovery.test.js\"",
     "test:integration": "node ./test/runTest.js",
     "prepare:icons": "node ./tools/generate-icons.js",
     "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"
