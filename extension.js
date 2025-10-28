@@ -48,6 +48,7 @@ function activate(context) {
 	const cp = require('child_process');
 	const fs = require('fs');
 	const path = require('path');
+    const { findBlinterExecutable } = require('./lib/discovery');
 
 	// Keep a small map of debounce timers for onType behavior
 	const debounceTimers = new Map();
@@ -80,13 +81,8 @@ function activate(context) {
 			output.appendLine(`Running Blinter on ${filePath}`);
 			output.show(true);
 
-			// Prefer a native Windows executable in bin/ (blinter.exe) for Windows users.
-			// Only support the native executable (exe) for this build. Do not fall back to Python.
-			const binExe = path.join(context.extensionPath, 'bin', process.platform === 'win32' ? 'blinter.exe' : 'blinter');
-			let scriptPath = null;
-			if (fs.existsSync(binExe)) {
-				scriptPath = binExe;
-			}
+			// Use discovery helper to locate the native executable in bin/ or bins/
+			let scriptPath = findBlinterExecutable(context.extensionPath, process.platform);
 
 			const rulesPath = config.get('rulesPath') || null;
 
@@ -94,9 +90,9 @@ function activate(context) {
 			diagnostics.delete(document.uri);
 
 			if (!scriptPath) {
-				const msg = 'Blinter executable not found in extension `bin/`. Place `blinter.exe` under the extension `bin/` folder to enable the linter.';
+				const msg = 'Blinter executable not found. Place `blinter.exe` under the extension `bin/` or `bins/` folder to enable the linter.';
 				output.appendLine(msg);
-				vscode.window.showWarningMessage('Blinter executable not found in extension `bin/`. See Output -> Blinter for details.');
+				vscode.window.showWarningMessage('Blinter executable not found in extension. See Output -> Blinter for details.');
 				return;
 			}
 

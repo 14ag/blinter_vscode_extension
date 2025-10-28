@@ -8,8 +8,8 @@ What it does
 - Provides quick-fix CodeActions for selected diagnostics (configurable via settings).
 
 Requirements
-- Visual Studio Code 1.75.0 or higher.
-- Native Blinter executable bundled in the extension at `bin/blinter.exe` (Windows). The extension requires the native binary and will not fall back to Python.
+ - Visual Studio Code 1.75.0 or higher.
+ - Native Blinter executable bundled in the extension at `bin/blinter.exe` (Windows). The extension requires the native binary and will not fall back to Python. If you renamed the folder to `bins/`, that is also supported.
 
 Quick start
 1. Ensure `bin/blinter.exe` is present in the extension root (this is included in our packaged VSIX).

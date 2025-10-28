@@ -63,6 +63,23 @@ history:
 				- project.txt
 			actor: automated-agent
 
+		- step_2025-10-28-2:
+			description: Accept `bins/` as an alternative executable folder in addition to `bin/`. Updated `extension.js` to search `bin/` and `bins/` and updated docs accordingly.
+			files_changed:
+				- extension.js
+				- PACKAGING.md
+				- README.md
+			actor: automated-agent
+
+		- step_2025-10-28-3:
+			description: Added a testable discovery helper at `lib/discovery.js` and unit tests `test/discovery.test.js` that validate executable discovery behavior (bin vs bins vs missing). Updated `extension.js` to use the helper and updated `package.json` `test:unit` to run all `test/**/*.test.js`.
+			files_changed:
+				- lib/discovery.js
+				- test/discovery.test.js
+				- extension.js
+				- package.json
+			actor: automated-agent
+
 - step_2025-10-22-2:
 	description: Implemented scaffolding in `extension.js`:
 		- created OutputChannel 'Blinter'

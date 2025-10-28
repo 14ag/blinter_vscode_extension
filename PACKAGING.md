@@ -4,7 +4,7 @@ This document explains how to package the extension so Windows users receive the
 
 Checklist before packaging
 
-- Ensure `bin/blinter.exe` (Windows native) is present in the repository root under `bin/`.
+ - Ensure `bin/blinter.exe` (Windows native) is present in the repository root under `bin/` (or `bins/` if you've renamed the folder).
 - Ensure any bundled Python assets live under `assets/` (for example `assets/blinter.py` and `assets/rules.json`).
  - This build is configured to use the native executable only. Ensure the native `blinter.exe` is present under `bin/`.
  - Any previous instructions referencing `assets/blinter.py` or Python are no longer applicable; this extension will not fall back to Python.
