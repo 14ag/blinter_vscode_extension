@@ -2,5 +2,5 @@
 node_modules
 test/*.*
 *.exe
-.vscode
-.vsix
+*.vscode
+*.vsix
