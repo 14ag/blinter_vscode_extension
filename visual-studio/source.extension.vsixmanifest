@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
+  <Metadata>
+    <Identity Id="14ag.Blinter" Version="1.0.0" Language="en-US" Publisher="14ag" />
+    <DisplayName>Blinter (Visual Studio)</DisplayName>
+    <Description xml:space="preserve">Blinter integration for Visual Studio - wrapper that runs the blinter.exe and reports issues to the Error List.</Description>
+    <MoreInfo>https://github.com/14ag/blinter_vscode_extension</MoreInfo>
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[16.0,18.0)" />
+  </Installation>
+</PackageManifest>

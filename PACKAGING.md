@@ -6,6 +6,8 @@ Checklist before packaging
 
 - Ensure `bin/blinter.exe` (Windows native) is present in the repository root under `bin/`.
 - Ensure any bundled Python assets live under `assets/` (for example `assets/blinter.py` and `assets/rules.json`).
+ - This build is configured to use the native executable only. Ensure the native `blinter.exe` is present under `bin/`.
+ - Any previous instructions referencing `assets/blinter.py` or Python are no longer applicable; this extension will not fall back to Python.
 - Ensure `.vscodeignore` does NOT exclude `bin/` or `assets/`. By default this repository's `.vscodeignore` does not exclude those folders.
 - Choose a `publisher` name and set `engines.vscode` in `package.json` to the supported VS Code range.
 

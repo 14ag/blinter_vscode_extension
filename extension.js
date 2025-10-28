@@ -81,58 +81,36 @@ function activate(context) {
 			output.show(true);
 
 			// Prefer a native Windows executable in bin/ (blinter.exe) for Windows users.
-			// Fallback to bundled blinter.py if no executable is present.
+			// Only support the native executable (exe) for this build. Do not fall back to Python.
 			const binExe = path.join(context.extensionPath, 'bin', process.platform === 'win32' ? 'blinter.exe' : 'blinter');
-			const bundledScript = path.join(context.extensionPath, 'assets', 'blinter.py');
-			let runnerMode = null; // 'exe' | 'python'
 			let scriptPath = null;
-
 			if (fs.existsSync(binExe)) {
-				runnerMode = 'exe';
 				scriptPath = binExe;
-			} else if (fs.existsSync(bundledScript)) {
-				runnerMode = 'python';
-				scriptPath = bundledScript;
-			} else {
-				// Look for blinter.py at extension root as a last resort
-				const rootScript = path.join(context.extensionPath, 'blinter.py');
-				if (fs.existsSync(rootScript)) {
-					runnerMode = 'python';
-					scriptPath = rootScript;
-				}
 			}
 
-			const pythonPath = config.get('pythonPath') || 'python';
 			const rulesPath = config.get('rulesPath') || null;
 
 			// Clear previous diagnostics for this doc
 			diagnostics.delete(document.uri);
 
 			if (!scriptPath) {
-				const msg = 'Blinter script not found in extension. Place blinter.py under the extension `assets/` folder or set `blinter.pythonPath` to a system python that can run Blinter.';
+				const msg = 'Blinter executable not found in extension `bin/`. Place `blinter.exe` under the extension `bin/` folder to enable the linter.';
 				output.appendLine(msg);
-				vscode.window.showWarningMessage('Blinter script not found. See Output -> Blinter for details.');
+				vscode.window.showWarningMessage('Blinter executable not found in extension `bin/`. See Output -> Blinter for details.');
 				return;
 			}
 
 			// Spawn the blinter process according to the runner mode
 			statusBar.text = '$(sync~spin) Blinter';
 			statusBar.show();
+			// Notify sidebar webview (if present)
+			try { provider && provider.postStatus && provider.postStatus('running'); } catch (e) {}
 
-			let proc;
-			if (runnerMode === 'exe') {
-				// Native executable: call it directly with file path and optional rules
-				const args = [filePath];
-				if (rulesPath) args.push('--rules', rulesPath);
-				output.appendLine(`${scriptPath} ${args.map(a => JSON.stringify(a)).join(' ')}`);
-				proc = cp.spawn(scriptPath, args, { cwd: context.extensionPath });
-			} else {
-				// Python mode: run python <script> <file> [--rules <rules>]
-				const args = [scriptPath, filePath];
-				if (rulesPath) args.push('--rules', rulesPath);
-				output.appendLine(`${pythonPath} ${args.map(a => JSON.stringify(a)).join(' ')}`);
-				proc = cp.spawn(pythonPath, args, { cwd: context.extensionPath });
-			}
+			// Native executable: call it directly with file path and optional rules
+			const args = [filePath];
+			if (rulesPath) args.push('--rules', rulesPath);
+			output.appendLine(`${scriptPath} ${args.map(a => JSON.stringify(a)).join(' ')}`);
+			const proc = cp.spawn(scriptPath, args, { cwd: context.extensionPath });
 
 			let stdout = '';
 			let stderr = '';
@@ -151,7 +129,7 @@ function activate(context) {
 
 			proc.on('error', (err) => {
 				output.appendLine(`Failed to start Blinter process: ${err && err.message}`);
-				vscode.window.showErrorMessage('Failed to start Blinter process. Ensure Python is installed and configured (`blinter.pythonPath`).');
+				vscode.window.showErrorMessage('Failed to start Blinter process. Ensure the Blinter executable (`bin/blinter.exe`) is present and has execute permissions. See Output -> Blinter for details.');
 				statusBar.text = '$(error) Blinter';
 			});
 
@@ -179,9 +157,11 @@ function activate(context) {
 				if (issues.length === 0) {
 					statusBar.text = '$(check) Blinter';
 					output.appendLine('Blinter: no issues found');
+					try { provider && provider.postStatus && provider.postStatus('no issues'); } catch (e) {}
 				} else {
 					statusBar.text = '$(error) Blinter';
 					output.appendLine(`Blinter: found ${issues.length} issue(s)`);
+					try { provider && provider.postStatus && provider.postStatus('issues found'); } catch (e) {}
 				}
 
 				if (stderr && stderr.trim()) {
@@ -254,22 +234,68 @@ function activate(context) {
 			this.context = context;
 		}
 		resolveWebviewView(webviewView) {
-			webviewView.webview.options = { enableScripts: true };
-			webviewView.webview.html = `<!doctype html><html><body>
-				<h3>Blinter Actions</h3>
-				<button id="run">Run Blinter</button>
-				<script>
-				const vscode = acquireVsCodeApi();
-				document.getElementById('run').addEventListener('click', () => {
-					vscode.postMessage({ command: 'run' });
-				});
-				</script>
-				</body></html>`;
+			this._view = webviewView;
+			const webview = webviewView.webview;
+			const iconPathOnDisk = path.join(this.context.extensionPath, 'icons', 'blinter-logo.svg');
+			const iconUri = webview.asWebviewUri(vscode.Uri.file(iconPathOnDisk));
+			webviewView.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(path.join(this.context.extensionPath, 'icons'))] };
+			webviewView.webview.html = `<!doctype html>
+			<html lang="en"><head>
+			<meta charset="utf-8" />
+			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+			<style>
+			body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; padding: 12px; }
+			.header { display:flex; align-items:center; gap:12px }
+			.header img { width:36px; height:36px }
+			.button { margin-top:12px }
+			.status { margin-top:10px; color: #666 }
+			</style>
+			</head><body>
+			<div class="header">
+				<img src="${iconUri}" alt="Blinter" />
+				<h3 style="margin:0">Blinter</h3>
+			</div>
+			<div>
+				<p>Run the Blinter linter on the active BAT file.</p>
+				<button id="run" class="button">Run Blinter</button>
+				<button id="openOutput" class="button">Show Output</button>
+				<div class="status" id="status">Status: idle</div>
+			</div>
+			<script>
+			const vscodeApi = acquireVsCodeApi();
+			document.getElementById('run').addEventListener('click', () => {
+				vscodeApi.postMessage({ command: 'run' });
+			});
+			document.getElementById('openOutput').addEventListener('click', () => {
+				vscodeApi.postMessage({ command: 'output' });
+			});
+			window.addEventListener('message', event => {
+				const msg = event.data;
+				if (msg.command === 'status') {
+					document.getElementById('status').textContent = 'Status: ' + msg.text;
+				}
+			});
+			</script>
+			</body></html>`;
 			webviewView.webview.onDidReceiveMessage((msg) => {
 				if (msg.command === 'run') {
 					vscode.commands.executeCommand('blinter.run');
+				} else if (msg.command === 'output') {
+					// Show the Blinter output channel
+					vscode.commands.executeCommand('workbench.action.output.toggleOutput');
+					vscode.commands.executeCommand('workbench.action.output.open');
 				}
 			}, null, this.context.subscriptions);
+		}
+
+		postStatus(text) {
+			try {
+				if (this._view && this._view.webview) {
+					this._view.webview.postMessage({ command: 'status', text });
+				}
+			} catch (e) {
+				// ignore
+			}
 		}
 	}
 	const provider = new BlinterViewProvider(context);

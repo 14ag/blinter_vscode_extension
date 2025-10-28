@@ -1,13 +1,18 @@
 {
   "name": "blinter",
-  "displayName": "blinter",
-  "description": "linter for batch",
+  "displayName": "Blinter",
+  "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tboy1337/Blinter"
+  },
   "engines": {
     "vscode": "^1.105.0"
   },
+  "icon": "icons/blinter-logo.png",
   "categories": [
-    "Other"
+    "Linters"
   ],
   "activationEvents": ["onLanguage:bat"],
   "main": "./extension.js",
@@ -68,17 +73,11 @@
           "default": 500,
           "description": "Delay in milliseconds for onType linting."
         },
-        "blinter.pythonPath": {
-          "type": ["string", "null"],
-          "default": null,
-          "description": "Path to the Python executable."
-        },
         "blinter.rulesPath": {
           "type": ["string", "null"],
           "default": null,
           "description": "Path to a custom rules.json file."
-        }
-      ,
+        },
         "blinter.quickFixCodes": {
           "type": "array",
           "items": { "type": "string" },
@@ -94,7 +93,8 @@
     "test": "vscode-test",
     "test:unit": "mocha test/parser.test.js",
     "test:integration": "node ./test/runTest.js",
-    "package:vsix": "npx vsce package --out blinter.vsix"
+    "prepare:icons": "node ./tools/generate-icons.js",
+    "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"
   },
   "devDependencies": {
     "@types/vscode": "^1.105.0",

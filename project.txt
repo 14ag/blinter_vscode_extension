@@ -18,7 +18,7 @@ To give users full control, the extension must contribute the following settings
 blinter.enabled: A boolean to enable or disable the linter entirely.
 blinter.runOn: A string ("onSave" or "onType") to control when linting occurs.
 blinter.debounceDelay: A number (in milliseconds) for the onType delay.
-blinter.pythonPath: An optional string path to a specific Python executable. If not set, it should default to a general python command.
+blinter.pythonPath: (deprecated) This extension now requires the native `blinter.exe` in `bin/` and does not use Python. Remove references to Python when packaging.
 blinter.rulesPath: An optional string path to a custom rules.json file, allowing users to override the bundled rules.
 c. Rich UI Integration
 Activity Bar Icon & View: An icon should appear in the Activity Bar only when a .bat or .cmd file is active ("when": "resourceLangId == bat"). Clicking it opens a simple view containing the "Run Blinter" button.
