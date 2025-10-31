@@ -1,14 +1,1 @@
-Repository Sync
-Visit the repository: https://github.com/tboy1337/Blinter.
-Compare its current implementation (including all source code, configuration files, and documentation) with the existing local Blinter repository.
-Identify any differences between the new and old versions of Blinter.exe (e.g., behavior, output, performance, or CLI parameters).
-Testing and Behavior Analysis
-Run the new executable using sample or known batch files.
-Observe its behavior and output.
-Predict how it processes and debugs batch scripts internally based on its source code logic.
-Repository Modification
-Based on observed differences and predicted behavior:
-Adjust or refactor relevant code, documentation, or configuration in the local repo to match the new version’s logic.
-Commit and document all changes clearly, explaining what was modified and why
-
-what i mean is, go to  https://github.com/tboy1337/Blinter and check for any implementation changes. also notice that i have updated the version of the exe in the bin directory to the latest one. test it out and make any changes to the repo based on how this version works. also check blinters source code to predict its output on debugging various batch files. use this info to make any changes here.
+create run_tests.bat to automate lint+unit tests and capture results as project_logs.log. add a small unit test to lock the new parser behavior when parsing the detailed multi-line output.
