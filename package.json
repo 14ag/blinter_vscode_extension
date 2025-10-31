@@ -14,43 +14,64 @@
   "categories": [
     "Linters"
   ],
-  "activationEvents": ["onLanguage:bat"],
+  "activationEvents": [
+    "onDebug:blinter-debug",
+    "onLanguage:bat",
+    "onLanguage:cmd"
+  ],
   "main": "./extension.js",
   "contributes": {
-    "commands": [
+    "debuggers": [
       {
-        "command": "blinter.helloWorld",
-        "title": "Hello World"
-      },
-      {
-        "command": "blinter.run",
-        "title": "Run Blinter on Active File"
+        "type": "blinter-debug",
+        "label": "Blinter Debugger",
+        "program": "./out/debugAdapter.js",
+        "enableBreakpointsFor": {
+          "languageIds": ["bat", "cmd"]
+        },
+        "configurationAttributes": {
+          "blinter-launch": {
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["blinter-debug"]
+              },
+              "request": {
+                "type": "string",
+                "enum": ["launch", "attach"],
+                "default": "launch"
+              },
+              "program": {
+                "type": "string",
+                "description": "Path to the batch file to lint/debug"
+              },
+              "args": {
+                "type": "array",
+                "description": "Additional arguments to pass to the batch file",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              }
+            },
+            "required": ["type", "request", "program"]
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": "Launch Batch (Blinter)",
+            "type": "blinter-debug",
+            "request": "launch",
+            "program": "${file}"
+          }
+        ]
       }
     ],
-    "menus": {
-      "editor/context": [
-        {
-          "when": "resourceLangId == bat",
-          "command": "blinter.run",
-          "group": "navigation"
-        }
-      ]
-    },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "blinter-sidebar",
-          "title": "Blinter",
-          "icon": "icons/blinter-logo.svg",
-          "when": "resourceLangId == bat"
-        }
-      ]
-    },
     "views": {
-      "blinter-sidebar": [
+      "debug": [
         {
-          "id": "blinter.view",
-          "name": "Blinter Actions"
+          "id": "blinter.outputSummary",
+          "name": "Blinter Output"
         }
       ]
     },
@@ -83,6 +104,11 @@
           "items": { "type": "string" },
           "default": ["BLINTER_CASE","CMD_CASE","CASE001"],
           "description": "List of Blinter diagnostic codes for which quick fixes (command-casing) are offered."
+        },
+        "blinter.stupidHighlightColor": {
+          "type": "string",
+          "default": "#5a1124",
+          "description": "Hex color to use when highlighting problematic 'stupid' lines during debugging."
         }
       }
     }
@@ -91,7 +117,7 @@
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test",
-    "test:unit": "mocha \"test/parser.test.js\" \"test/discovery.test.js\"",
+    "test:unit": "mocha \"test/parser.test.js\" \"test/discovery.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\"",
     "test:integration": "node ./test/runTest.js",
     "prepare:icons": "node ./tools/generate-icons.js",
     "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"

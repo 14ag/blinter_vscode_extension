@@ -7,22 +7,22 @@ root: c:\Users\philip\sauce\blinter_vscode_extension
 
 owner: unspecified
 
-last_updated: 2025-10-22T00:00:00Z
+last_updated: 2025-10-31T23:10:00Z
 
 current_state:
-- small single-file VS Code extension implemented in CommonJS JavaScript
-- existing command: blinter.helloWorld (defined in package.json + extension.js)
-- tests: minimal mocha test in test/extension.test.js using vscode test runner
-- linter: eslint with config in eslint.config.mjs
+- VS Code extension exposes a debug type (`blinter-debug`) backed by an inline debug adapter wrapping `lib/debugAdapterCore.js` and the bundled Blinter executable.
+- Streaming analysis lives in `lib/analysis.js`, producing diagnostics, hover content, and configurable "stupid" line decorations while feeding the Blinter Output webview.
+- Unit suite now covers parser, discovery, analyzer, and inline debug adapter behaviour (`npm run test:unit`).
+- Documentation (`README.md`, `PACKAGING.md`, `project.txt`) reflects the Run & Debug workflow with a launch.json example.
+- ESLint ignore patterns migrated into `eslint.config.mjs`; legacy `.eslintignore` removed to silence warnings.
 
 goals:
 1. Implement a production-grade Blinter integration per project spec (automatic/on-demand linting, UI, settings, diagnostics, quick fixes)
 
 next_actions (actionable steps for next agent):
-1. Update `package.json` to add activationEvents, `blinter.run` command, menus, viewsContainers/views, and configuration properties per project spec in `project.txt`.
-2. Modify `extension.js` to register `blinter.run` command and scaffold: OutputChannel 'Blinter', StatusBarItem, DiagnosticCollection, and a stubed runner that can execute an external blinter script.
-3. Add or bundle `blinter.py` and default `rules.json` under an `assets/` directory, or add instructions to obtain them from https://github.com/tboy1337/Blinter.
-4. Run `npm run lint` and `npm test`, fix issues, and iterate.
+1. Provide the optional `run_tests.bat` automation (or equivalent) that runs lint + tests, captures output in `project_logs.log`, and hook it into the workflow per spec.
+2. Extend analyzer coverage for multi-file variable traces and ensure the webview remains performant with large result sets (rate limiting / batching if needed).
+3. Consider lightweight integration smoke tests (e.g., simulate debug adapter session to verify webview payloads) if additional assurance is required.
 
 notes:
 - No existing `.github/copilot-instructions.md` prior to this session; a canonical one was added.
@@ -189,5 +189,41 @@ next_actions:
 	files_changed:
 		- progress: updated with test results and current status
 	actor: automated-agent
+
+
+	- step_2025-10-31-1:
+		description: Reused the original Blinter repository icon for Marketplace branding by converting `resources/blinter_icon.ico` into the extension's `icons/blinter-logo.png` and syncing the packaged base64 copy.
+		files_changed:
+			- icons/blinter-logo.png
+			- icons/blinter-logo.png.base64
+		actor: automated-agent
+
+	- step_2025-10-31-2:
+		description: Reworked the extension around a `blinter-debug` inline debug adapter: removed legacy run command/status UI, added debugger contribution + Run & Debug view integration, introduced `lib/analysis.js` for streaming issue classification, and updated `extension.js` to drive diagnostics, hovers, decorations, and the new output summary webview. Added placeholder `out/debugAdapter.js` and refreshed configuration/activation events.
+		files_changed:
+			- package.json
+			- extension.js
+			- lib/analysis.js (new)
+			- out/debugAdapter.js
+			- progress
+		actor: automated-agent
+
+	- step_2025-10-31-3:
+		description: Added `lib/debugAdapterCore.js`, rewired `extension.js` to consume it, introduced unit tests (`test/analysis.test.js`, `test/debugAdapter.test.js`) plus fixtures, refreshed docs (README.md, PACKAGING.md, project.txt), migrated ESLint ignores into `eslint.config.mjs`, removed `.eslintignore`, and reran `npm run test:unit`.
+		files_changed:
+			- extension.js
+			- lib/debugAdapterCore.js (new)
+			- lib/analysis.js
+			- test/analysis.test.js
+			- test/debugAdapter.test.js
+			- test/fixtures/variable-sample.bat
+			- package.json
+			- eslint.config.mjs
+			- README.md
+			- PACKAGING.md
+			- project.txt
+			- progress
+			- .eslintignore (removed)
+		actor: automated-agent
 
 

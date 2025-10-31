@@ -2,6 +2,12 @@ import globals from "globals";
 
 export default [{
     files: ["**/*.js"],
+    ignores: [
+        "node_modules/**",
+        ".vscode-test/**",
+        ".vscode/**",
+        "**/*.vsix"
+    ],
     languageOptions: {
         globals: {
             ...globals.commonjs,

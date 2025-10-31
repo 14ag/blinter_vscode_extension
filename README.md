@@ -1,42 +1,57 @@
 # Blinter — VS Code Batch Linter
 
-Blinter integrates the Blinter linter into Visual Studio Code to provide fast, actionable diagnostics and simple quick fixes for Windows batch files (.bat, .cmd).
+Blinter integrates the native Blinter executable into Visual Studio Code’s **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get live diagnostics, variable tracking, and actionable quick fixes while you iterate.
 
-What it does
-- Runs the native Blinter executable (bundled) against the active batch file and reports problems in the Problems panel.
-- Shows a Blinter activity view with a Run button, status, and quick access to the Output channel.
-- Provides quick-fix CodeActions for selected diagnostics (configurable via settings).
+## What it does
+- Registers a `blinter-debug` debug type that launches the bundled `blinter.exe` and streams its output into VS Code.
+- Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline “stupid line” decorations in sync.
+- Exposes a **Blinter Output** view in the Run & Debug sidebar that groups diagnostics (errors, warnings, undefined variables, etc.) and lets you jump straight to problem lines.
+- Provides command-casing quick fixes (configurable) and detailed variable traces for undefined-variable diagnostics.
 
-Requirements
- - Visual Studio Code 1.75.0 or higher.
- - Native Blinter executable bundled in the extension at `bin/blinter.exe` (Windows). The extension requires the native binary and will not fall back to Python. If you renamed the folder to `bins/`, that is also supported.
+## Requirements
+- Visual Studio Code 1.75.0 or higher (stable or Insiders).
+- Bundled native `blinter.exe` in `bin/` (or `bins/`) inside the extension. The extension does **not** fall back to Python scripts.
 
-Quick start
-1. Ensure `bin/blinter.exe` is present in the extension root (this is included in our packaged VSIX).
-2. Open a `.bat` or `.cmd` file in VS Code.
-3. Use the Blinter Activity Bar item or run the command `Blinter: Run` from the Command Palette to run the linter on the active file.
+## Quick start
+1. Confirm `bin/blinter.exe` is included alongside the extension (already bundled in the published VSIX).
+2. Open a workspace that contains the batch file you want to lint.
+3. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow VS Code to create a `launch.json` using the snippet below.
+4. Press **Run** (F5). Blinter runs immediately, populating the Problems panel, in-editor highlights, and the Blinter Output view.
 
-Commands
-- `Blinter: Run` — Run the linter on the active BAT/CMD file (contributed as `blinter.run`).
+Example `launch.json` entry:
 
-Settings (contributed)
-- `blinter.enabled` (boolean) — enable/disable the linter.
-- `blinter.runOn` ("onSave" | "onType") — run on save or as you type.
-- `blinter.debounceDelay` (number) — debounce delay in ms for onType runs.
-- `blinter.rulesPath` (string|null) — optional path to a rules JSON file to override bundled rules.
-- `blinter.quickFixCodes` (string[]) — list of diagnostic codes for which the extension will offer quick fixes.
+```
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Batch (Blinter)",
+      "type": "blinter-debug",
+      "request": "launch",
+      "program": "${file}"
+    }
+  ]
+}
+```
 
-Output & Troubleshooting
-- Open View → Output and select "Blinter" to see the raw command invocation and the tool output.
-- If the extension cannot find `bin/blinter.exe`, it will show a warning and log details to the Output channel. Make sure `bin/blinter.exe` is present and executable.
+## Settings
+- `blinter.enabled` (boolean) – enable/disable the integration entirely.
+- `blinter.runOn` (`"onSave" | "onType"`) – keep the legacy background linting triggers if you prefer automatic runs outside of debugging.
+- `blinter.debounceDelay` (number) – debounce (ms) for `onType` runs.
+- `blinter.rulesPath` (string|null) – optional override for a custom rules JSON file.
+- `blinter.quickFixCodes` (string[]) – diagnostic codes that should offer command-casing quick fixes.
+- `blinter.stupidHighlightColor` (string) – hex color used for highlighted “stupid” lines during a debug session.
 
-Packaging & publishing
-- Use `npm run package:vsix` to create a VSIX. Packaging will generate the icon PNG and include `bin/blinter.exe` when present. See `PACKAGING.md` for details.
+## Output & troubleshooting
+- View → Output → **Blinter** shows the exact command invocation, stdout, and stderr.
+- If `blinter.exe` cannot be located, a warning is raised and the Output channel logs the lookup paths (`bin/` or `bins/`). Copy the executable into one of those folders and rerun.
+- Diagnostics clear automatically when a session ends; start a new Run & Debug session to refresh analysis.
 
-Notes
-- This build targets VS Code and VS Code Insiders. Support for Visual Studio (IDE) is intentionally not included.
+## Packaging & publishing
+- Run `npm run package:vsix` to build a distributable VSIX. The script regenerates the icon assets and runs `vsce package`.
+- See `PACKAGING.md` for end-to-end packaging guidance (including CI notes and artifact checks).
 
-License
+## License
 - MIT — see `LICENSE`.
 
-If you'd like a different layout for the Activity view (logs, last-run summary, clickable problem list), tell me what you'd prefer and I will extend the webview accordingly.
+Questions or feature requests? Open an issue or tweak the Blinter Output webview to suit your team’s workflow.

@@ -4,12 +4,11 @@ This document explains how to package the extension so Windows users receive the
 
 Checklist before packaging
 
- - Ensure `bin/blinter.exe` (Windows native) is present in the repository root under `bin/` (or `bins/` if you've renamed the folder).
-- Ensure any bundled Python assets live under `assets/` (for example `assets/blinter.py` and `assets/rules.json`).
- - This build is configured to use the native executable only. Ensure the native `blinter.exe` is present under `bin/`.
- - Any previous instructions referencing `assets/blinter.py` or Python are no longer applicable; this extension will not fall back to Python.
-- Ensure `.vscodeignore` does NOT exclude `bin/` or `assets/`. By default this repository's `.vscodeignore` does not exclude those folders.
+- Ensure `bin/blinter.exe` (Windows native) is present in the repository root under `bin/` (or `bins/` if you've renamed the folder).
+- Ensure `.vscodeignore` does **not** exclude `bin/` or the executable. The repository’s ignore settings already keep it.
+- The extension no longer ships or references Python scripts; only the native executable is required.
 - Choose a `publisher` name and set `engines.vscode` in `package.json` to the supported VS Code range.
+- Verify the documentation (README / `project.txt`) references the Run & Debug flow and the `blinter-debug` launch configuration.
 
 Packaging steps (local)
 
@@ -24,7 +23,7 @@ npm install -g vsce
 ```powershell
 npm install
 npm run lint
-npm run test:unit
+npm run test:unit  # runs parser, discovery, analysis, and debug adapter unit tests
 ```
 
 3. Build the VSIX (from repository root):

@@ -1,215 +1,138 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
+const path = require('path');
+const fs = require('fs');
+const cp = require('child_process');
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+const { findBlinterExecutable } = require('./lib/discovery');
+const { analyzeLine, buildVariableIndexFromFile } = require('./lib/analysis');
+const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 
-/**
- * @param {vscode.ExtensionContext} context
- */
 function activate(context) {
+  const controller = new BlinterController(context);
+  controller.initialize();
+}
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "blinter" is now active!');
+function deactivate() {}
 
-	// Output channel for Blinter logs
-	const output = vscode.window.createOutputChannel('Blinter');
-	context.subscriptions.push(output);
+module.exports = {
+  activate,
+  deactivate
+};
 
-	// Diagnostics collection
-	const diagnostics = vscode.languages.createDiagnosticCollection('blinter');
-	context.subscriptions.push(diagnostics);
+class BlinterController {
+  constructor(context) {
+    this.context = context;
+    this.output = vscode.window.createOutputChannel('Blinter');
+    this.diagnostics = vscode.languages.createDiagnosticCollection('blinter');
+    this.issuesByFile = new Map();
+    this.variableIndex = new Map();
+    this.currentProgramPath = undefined;
+    this.currentWorkspaceRoot = undefined;
+    this.currentSessionId = undefined;
+    this.pendingUpdateTimer = undefined;
+    this.status = { state: 'idle', detail: '' };
 
-	// Status bar item
-	const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-	statusBar.text = 'Blinter';
-	statusBar.tooltip = 'Run Blinter';
-	statusBar.command = 'blinter.run';
-	context.subscriptions.push(statusBar);
+    this.decorationType = this.createDecorationType();
 
-	function updateStatusBar() {
-		const editor = vscode.window.activeTextEditor;
-		if (editor && (editor.document.languageId === 'bat')) {
-			statusBar.show();
-		} else {
-			statusBar.hide();
-		}
-	}
+    context.subscriptions.push(this.output);
+    context.subscriptions.push(this.diagnostics);
+    context.subscriptions.push(this.decorationType);
+  }
 
-	// Register existing helloWorld command
-	const hello = vscode.commands.registerCommand('blinter.helloWorld', function () {
-		vscode.window.showInformationMessage('Hello World from blinter!');
-	});
-	context.subscriptions.push(hello);
+  initialize() {
+    const { context } = this;
 
-	// Add required modules for runner
-	const cp = require('child_process');
-	const fs = require('fs');
-	const path = require('path');
-    const { findBlinterExecutable } = require('./lib/discovery');
+    this.webviewProvider = new BlinterOutputViewProvider(context.extensionUri, this);
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('blinter.outputSummary', this.webviewProvider));
 
-	// Keep a small map of debounce timers for onType behavior
-	const debounceTimers = new Map();
+    context.subscriptions.push(
+      vscode.languages.registerHoverProvider(['bat', 'cmd'], {
+        provideHover: (document, position) => this.provideHover(document, position)
+      })
+    );
 
-	// Map Blinter severity to vscode DiagnosticSeverity
-	function mapSeverity(s) {
-		const sev = (s || '').toUpperCase();
-		if (sev === 'INFO') return vscode.DiagnosticSeverity.Information;
-		if (sev === 'WARN' || sev === 'WARNING') return vscode.DiagnosticSeverity.Warning;
-		return vscode.DiagnosticSeverity.Error; // ERROR, FATAL -> Error
-	}
+    context.subscriptions.push(
+      vscode.languages.registerCodeActionsProvider('bat', this.createQuickFixProvider(), {
+        providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
+      })
+    );
 
-	// Use parser utility to parse raw stdout into structured issues
-	const { parseBlinterOutput } = require('./lib/parser');
+    context.subscriptions.push(
+      vscode.debug.registerDebugConfigurationProvider('blinter-debug', new BlinterConfigurationProvider())
+    );
 
-	async function runBlinterOnDocument(document) {
-		try {
-			const config = vscode.workspace.getConfiguration('blinter');
-			if (!config.get('enabled', true)) {
-				output.appendLine('Blinter disabled via settings.');
-				return;
-			}
+    context.subscriptions.push(
+      vscode.debug.registerDebugAdapterDescriptorFactory('blinter-debug', new BlinterDebugAdapterFactory(this))
+    );
 
-			if (document.languageId !== 'bat') {
-				output.appendLine('Blinter: skipped non-bat file');
-				return;
-			}
+    context.subscriptions.push(
+      vscode.window.onDidChangeVisibleTextEditors(() => this.refreshDecorations())
+    );
 
-			const filePath = document.fileName;
-			output.appendLine(`Running Blinter on ${filePath}`);
-			output.show(true);
+    context.subscriptions.push(
+      vscode.workspace.onDidCloseTextDocument((doc) => this.clearDocument(doc.uri))
+    );
 
-			// Use discovery helper to locate the native executable in bin/ or bins/
-			let scriptPath = findBlinterExecutable(context.extensionPath, process.platform);
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('blinter.stupidHighlightColor')) {
+          this.resetDecorationStyle();
+        }
+      })
+    );
 
-			const rulesPath = config.get('rulesPath') || null;
+    context.subscriptions.push(
+      vscode.debug.onDidStartDebugSession((session) => {
+        if (session.type === 'blinter-debug') {
+          this.currentSessionId = session.id;
+          this.webviewProvider?.ensureVisible();
+        }
+      })
+    );
 
-			// Clear previous diagnostics for this doc
-			diagnostics.delete(document.uri);
+    context.subscriptions.push(
+      vscode.debug.onDidTerminateDebugSession((session) => {
+        if (session.type === 'blinter-debug') {
+          this.handleProcessExit(this.lastExitCode ?? 0);
+          this.currentSessionId = undefined;
+        }
+      })
+    );
 
-			if (!scriptPath) {
-				const msg = 'Blinter executable not found. Place `blinter.exe` under the extension `bin/` or `bins/` folder to enable the linter.';
-				output.appendLine(msg);
-				vscode.window.showWarningMessage('Blinter executable not found in extension. See Output -> Blinter for details.');
-				return;
-			}
+    this.updateStatus('idle');
+    this.updateWebview();
+    this.refreshDecorations();
+  }
 
-			// Spawn the blinter process according to the runner mode
-			statusBar.text = '$(sync~spin) Blinter';
-			statusBar.show();
-			// Notify sidebar webview (if present)
-			try { provider && provider.postStatus && provider.postStatus('running'); } catch (e) {}
+  createQuickFixProvider() {
+    return {
+      provideCodeActions: (document, range, context) => {
+        if (document.languageId !== 'bat') {
+          return [];
+        }
 
-			// Native executable: call it directly with file path and optional rules
-			const args = [filePath];
-			if (rulesPath) args.push('--rules', rulesPath);
-			output.appendLine(`${scriptPath} ${args.map(a => JSON.stringify(a)).join(' ')}`);
-			const proc = cp.spawn(scriptPath, args, { cwd: context.extensionPath });
-
-			let stdout = '';
-			let stderr = '';
-
-			proc.stdout.on('data', (data) => {
-				const s = String(data);
-				stdout += s;
-				output.append(s);
-			});
-
-			proc.stderr.on('data', (data) => {
-				const s = String(data);
-				stderr += s;
-				output.append(s);
-			});
-
-			proc.on('error', (err) => {
-				output.appendLine(`Failed to start Blinter process: ${err && err.message}`);
-				vscode.window.showErrorMessage('Failed to start Blinter process. Ensure the Blinter executable (`bin/blinter.exe`) is present and has execute permissions. See Output -> Blinter for details.');
-				statusBar.text = '$(error) Blinter';
-			});
-
-			proc.on('close', () => {
-				const issues = [];
-
-				// Parse stdout via parser utility
-				const parsed = parseBlinterOutput(stdout);
-				for (const item of parsed) {
-					const lineNumber = Math.max(0, (item.line || 1) - 1);
-					let range;
-					try {
-						const docLine = document.lineAt(lineNumber);
-						range = docLine.range;
-					} catch {
-						range = new vscode.Range(new vscode.Position(lineNumber, 0), new vscode.Position(lineNumber, 0));
-					}
-					const diag = new vscode.Diagnostic(range, `${item.description} (${item.code})`, mapSeverity(item.severity.toUpperCase()));
-					diag.code = item.code;
-					issues.push(diag);
-				}
-
-				diagnostics.set(document.uri, issues);
-
-				if (issues.length === 0) {
-					statusBar.text = '$(check) Blinter';
-					output.appendLine('Blinter: no issues found');
-					try { provider && provider.postStatus && provider.postStatus('no issues'); } catch (e) {}
-				} else {
-					statusBar.text = '$(error) Blinter';
-					output.appendLine(`Blinter: found ${issues.length} issue(s)`);
-					try { provider && provider.postStatus && provider.postStatus('issues found'); } catch (e) {}
-				}
-
-				if (stderr && stderr.trim()) {
-					output.appendLine('Blinter stderr:');
-					output.appendLine(stderr);
-				}
-
-				updateStatusBar();
-			});
-		} catch (ex) {
-			output.appendLine(`Blinter runner exception: ${ex && ex.message ? ex.message : String(ex)}`);
-			vscode.window.showErrorMessage('Blinter encountered an exception. See Output -> Blinter for details.');
-			updateStatusBar();
-		}
-	}
-
-	// Command to run Blinter on the active editor
-	const runCmd = vscode.commands.registerCommand('blinter.run', async function () {
-		const editor = vscode.window.activeTextEditor;
-		if (!editor) {
-			vscode.window.showInformationMessage('No active editor to run Blinter on');
-			return;
-		}
-		await runBlinterOnDocument(editor.document);
-	});
-	context.subscriptions.push(runCmd);
-
-	// --- CodeActionProvider: quick fixes ---
-	const codeActionProvider = {
-		provideCodeActions(document, range, context) {
 			const actions = [];
-			if (document.languageId !== 'bat') return actions;
-
 			const config = vscode.workspace.getConfiguration('blinter');
-			const allowedCodes = config.get('quickFixCodes', ['BLINTER_CASE','CMD_CASE','CASE001']);
+        const allowedCodes = config.get('quickFixCodes', ['BLINTER_CASE', 'CMD_CASE', 'CASE001']);
 
-			// For each diagnostic in the range, propose a normalization quick fix only when allowed
 			for (const diag of context.diagnostics) {
 				const code = diag.code ? String(diag.code) : '';
 				const message = diag.message ? String(diag.message).toLowerCase() : '';
 
-				// Only offer fix if diag code is in configured list OR message hints at casing
 				const codeMatches = code && allowedCodes.includes(code);
 				const messageHintsCase = message.includes('case') || message.includes('casing');
-				if (!codeMatches && !messageHintsCase) continue;
+          if (!codeMatches && !messageHintsCase) {
+            continue;
+          }
 
-				// Create a quick fix that lowercases the first token of the affected line
 				const lineText = document.lineAt(range.start.line).text;
-				const m = /^\s*([A-Za-z0-9_@]+)(\b.*)$/m.exec(lineText);
-				if (!m) continue;
-				const commandToken = m[1];
-				const rest = m[2] || '';
+          const match = /^\s*([A-Za-z0-9_@]+)(\b.*)$/m.exec(lineText);
+          if (!match) {
+            continue;
+          }
+
+          const commandToken = match[1];
+          const rest = match[2] || '';
 				const fixed = commandToken.toLowerCase() + rest;
 
 				const fix = new vscode.CodeAction('Normalize command casing', vscode.CodeActionKind.QuickFix);
@@ -219,132 +142,680 @@ function activate(context) {
 				fix.isPreferred = true;
 				actions.push(fix);
 			}
+
 			return actions;
 		}
 	};
-	context.subscriptions.push(vscode.languages.registerCodeActionsProvider('bat', codeActionProvider, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }));
+  }
 
-	// --- Activity Bar view (Webview) ---
-	class BlinterViewProvider {
-		constructor(context) {
-			this.context = context;
-		}
+  resetDecorationStyle() {
+    const newDecoration = this.createDecorationType();
+    this.decorationType.dispose();
+    this.decorationType = newDecoration;
+    this.context.subscriptions.push(this.decorationType);
+    this.refreshDecorations();
+  }
+
+  createDecorationType() {
+    const color = this.getHighlightColor();
+    return vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      backgroundColor: color,
+      overviewRulerColor: color,
+      overviewRulerLane: vscode.OverviewRulerLane.Full,
+      light: { backgroundColor: color },
+      dark: { backgroundColor: color }
+    });
+  }
+
+  getHighlightColor() {
+    const colorFromConfig = vscode.workspace.getConfiguration('blinter').get('stupidHighlightColor', '#5a1124');
+    if (typeof colorFromConfig === 'string') {
+      const trimmed = colorFromConfig.trim();
+      const hexMatch = trimmed.match(/^#?([0-9A-Fa-f]{6})$/);
+      if (hexMatch) {
+        const value = hexMatch[1];
+        const r = parseInt(value.slice(0, 2), 16);
+        const g = parseInt(value.slice(2, 4), 16);
+        const b = parseInt(value.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, 0.35)`;
+      }
+    }
+    return new vscode.ThemeColor('editorError.background');
+  }
+
+  prepareForLaunch(args, session) {
+    this.clearIssues();
+
+    if (!args || !args.program) {
+      throw new Error('Launch configuration is missing the "program" field.');
+    }
+
+    const config = vscode.workspace.getConfiguration('blinter');
+    if (!config.get('enabled', true)) {
+      throw new Error('Blinter is disabled in settings. Enable "blinter.enabled" to run debugging.');
+    }
+
+    const workspaceFolder = session?.workspaceFolder?.uri?.fsPath
+      || args.workspaceFolder
+      || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+        ? vscode.workspace.workspaceFolders[0].uri.fsPath
+        : undefined);
+
+    const programPath = this.resolveProgramPath(args.program, workspaceFolder);
+    if (!fs.existsSync(programPath)) {
+      throw new Error(`Program not found: ${programPath}`);
+    }
+
+    const executablePath = findBlinterExecutable(this.context.extensionPath, process.platform);
+    if (!executablePath) {
+      throw new Error('Blinter executable not found. Place `blinter.exe` under the extension `bin/` or `bins/` folder.');
+    }
+
+    const rulesPathSetting = args.rulesPath || config.get('rulesPath') || null;
+    const resolvedRulesPath = rulesPathSetting
+      ? this.resolveRulesPath(rulesPathSetting, workspaceFolder, programPath)
+      : null;
+
+    const userArgs = Array.isArray(args.args) ? args.args.filter((value) => typeof value === 'string' && value.trim().length > 0) : [];
+
+    const execArgs = [programPath];
+    if (resolvedRulesPath) {
+      execArgs.push('--rules', resolvedRulesPath);
+    }
+    execArgs.push(...userArgs);
+
+    this.currentProgramPath = programPath;
+    this.currentWorkspaceRoot = workspaceFolder || path.dirname(programPath);
+    this.variableIndex = buildVariableIndexFromFile(programPath, fs);
+    this.updateStatus('running', path.basename(programPath));
+    this.webviewProvider?.ensureVisible();
+    this.updateWebview();
+
+    this.log(`Launching Blinter: ${executablePath} ${execArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+
+    return {
+      executable: executablePath,
+      args: execArgs,
+      cwd: path.dirname(programPath)
+    };
+  }
+
+  resolveProgramPath(program, workspaceFolder) {
+    if (path.isAbsolute(program)) {
+      return path.normalize(program);
+    }
+    if (workspaceFolder) {
+      return path.normalize(path.join(workspaceFolder, program));
+    }
+    return path.normalize(path.resolve(program));
+  }
+
+  resolveRulesPath(rulesPath, workspaceFolder, programPath) {
+    if (!rulesPath) {
+      return null;
+    }
+    if (path.isAbsolute(rulesPath)) {
+      return path.normalize(rulesPath);
+    }
+    if (workspaceFolder) {
+      const candidate = path.join(workspaceFolder, rulesPath);
+      if (fs.existsSync(candidate)) {
+        return path.normalize(candidate);
+      }
+    }
+    const fromProgram = path.join(path.dirname(programPath), rulesPath);
+    if (fs.existsSync(fromProgram)) {
+      return path.normalize(fromProgram);
+    }
+    return path.normalize(rulesPath);
+  }
+
+  acceptProcessText(line, channel) {
+    const text = line.replace(/\r?$/, '');
+    if (!text) {
+      return;
+    }
+
+    this.log(`[${channel}] ${text}`);
+
+    const { issues } = analyzeLine(text, {
+      workspaceRoot: this.currentWorkspaceRoot,
+      defaultFile: this.currentProgramPath,
+      variableIndex: this.variableIndex
+    });
+
+    if (!issues || issues.length === 0) {
+      return;
+    }
+
+    for (const issue of issues) {
+      this.addIssue(issue);
+    }
+  }
+
+  addIssue(issue) {
+    const targetFile = issue.filePath || this.currentProgramPath;
+    if (!targetFile) {
+      return;
+    }
+
+    issue.filePath = path.normalize(targetFile);
+    if (!this.issuesByFile.has(issue.filePath)) {
+      this.issuesByFile.set(issue.filePath, []);
+    }
+    this.issuesByFile.get(issue.filePath).push(issue);
+
+    this.scheduleDiagnosticsUpdate();
+  }
+
+  scheduleDiagnosticsUpdate() {
+    if (this.pendingUpdateTimer) {
+      return;
+    }
+    this.pendingUpdateTimer = setTimeout(() => {
+      this.pendingUpdateTimer = undefined;
+      this.flushDiagnostics();
+    }, 75);
+  }
+
+  flushDiagnostics() {
+    const entries = [];
+    for (const [filePath, list] of this.issuesByFile.entries()) {
+      const uri = vscode.Uri.file(filePath);
+      const diagnostics = list.sort((a, b) => this.compareIssues(a, b)).map((issue) => this.toDiagnostic(issue));
+      entries.push({ uri, diagnostics });
+    }
+
+    this.diagnostics.clear();
+    for (const entry of entries) {
+      this.diagnostics.set(entry.uri, entry.diagnostics);
+    }
+
+    this.refreshDecorations();
+    this.updateWebview();
+  }
+
+  compareIssues(a, b) {
+    const order = { error: 0, warning: 1, info: 2 };
+    const severityDelta = (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
+    if (severityDelta !== 0) {
+      return severityDelta;
+    }
+    return (a.line || 0) - (b.line || 0);
+  }
+
+  toDiagnostic(issue) {
+    const severityMap = {
+      error: vscode.DiagnosticSeverity.Error,
+      warning: vscode.DiagnosticSeverity.Warning,
+      info: vscode.DiagnosticSeverity.Information
+    };
+
+    const lineIndex = Math.max(0, (issue.line || 1) - 1);
+    const startChar = issue.range?.start?.character ?? 0;
+    const endChar = issue.range?.end?.character ?? 200;
+    const range = new vscode.Range(lineIndex, startChar, lineIndex, endChar);
+    const message = issue.message;
+
+    const diagnostic = new vscode.Diagnostic(range, message, severityMap[issue.severity] ?? vscode.DiagnosticSeverity.Error);
+    diagnostic.source = 'blinter';
+    diagnostic.code = issue.code || issue.classification;
+    return diagnostic;
+  }
+
+  refreshDecorations() {
+    if (!this.decorationType) {
+      return;
+    }
+
+    const editors = vscode.window.visibleTextEditors;
+    for (const editor of editors) {
+      const issues = this.issuesByFile.get(editor.document.uri.fsPath) || [];
+      const stupidRanges = [];
+
+      for (const issue of issues) {
+        if (!issue.isStupid) {
+          continue;
+        }
+        const lineIndex = Math.max(0, (issue.line || 1) - 1);
+        if (lineIndex >= editor.document.lineCount) {
+          continue;
+        }
+        const lineRange = editor.document.lineAt(lineIndex).range;
+        stupidRanges.push(lineRange);
+      }
+
+      editor.setDecorations(this.decorationType, stupidRanges);
+    }
+  }
+
+  updateWebview() {
+    if (!this.webviewProvider) {
+      return;
+    }
+
+    const summary = this.collectSummary();
+    this.webviewProvider.update(summary);
+  }
+
+  collectSummary() {
+    const definitions = [
+      { id: 'errors', label: 'Errors', filter: (issue) => issue.severity === 'error' },
+      { id: 'warnings', label: 'Warnings', filter: (issue) => issue.severity === 'warning' },
+      { id: 'info', label: 'Info', filter: (issue) => issue.severity === 'info' },
+      { id: 'undefined', label: 'Undefined Variables', filter: (issue) => issue.classification === 'UndefinedVariable' },
+      { id: 'stupid', label: 'Stupid Lines', filter: (issue) => issue.isStupid }
+    ];
+
+    const groups = definitions.map((definition) => ({
+      id: definition.id,
+      label: definition.label,
+      items: []
+    }));
+
+    for (const [filePath, list] of this.issuesByFile.entries()) {
+      for (const issue of list) {
+        for (let i = 0; i < definitions.length; i += 1) {
+          const definition = definitions[i];
+          if (!definition.filter(issue)) {
+            continue;
+          }
+          groups[i].items.push({
+            id: issue.id,
+            filePath,
+            fileName: path.basename(filePath),
+            line: issue.line,
+            message: issue.message,
+            severity: issue.severity,
+            classification: issue.classification
+          });
+        }
+      }
+    }
+
+    return { groups, status: this.status };
+  }
+
+  provideHover(document, position) {
+    const issues = this.issuesByFile.get(document.uri.fsPath) || [];
+    const lineNumber = position.line + 1;
+    const hits = issues.filter((issue) => issue.line === lineNumber);
+    if (!hits.length) {
+      return undefined;
+    }
+
+    hits.sort((a, b) => this.compareIssues(a, b));
+
+    const md = new vscode.MarkdownString(undefined, true);
+    md.isTrusted = true;
+
+    hits.forEach((issue) => {
+      md.appendMarkdown(`- **${escapeMarkdown(issue.classification || issue.severity.toUpperCase())}** — ${escapeMarkdown(issue.message)}\n`);
+      if (issue.variableTrace && issue.variableTrace.length) {
+        md.appendMarkdown(`  - Trace: ${escapeMarkdown(issue.variableTrace.join(' → '))}\n`);
+      }
+    });
+
+    return new vscode.Hover(md);
+  }
+
+  clearDocument(uri) {
+    const filePath = uri.fsPath;
+    if (!this.issuesByFile.has(filePath)) {
+      return;
+    }
+    this.issuesByFile.delete(filePath);
+    this.scheduleDiagnosticsUpdate();
+  }
+
+  clearIssues() {
+    this.issuesByFile.clear();
+    this.diagnostics.clear();
+    this.refreshDecorations();
+    this.updateWebview();
+  }
+
+  handleProcessExit(code) {
+    this.lastExitCode = code;
+    const status = code === 0 ? 'completed' : 'errored';
+    this.updateStatus(status, code === 0 ? 'Blinter completed' : `Exited with code ${code}`);
+    this.flushDiagnostics();
+  }
+
+  updateStatus(state, detail) {
+    this.status = { state, detail: detail || '' };
+    if (this.webviewProvider) {
+      this.webviewProvider.updateStatus(this.status);
+    }
+  }
+
+  revealLocation(filePath, line) {
+    if (!filePath) {
+      return;
+    }
+    const uri = vscode.Uri.file(filePath);
+    vscode.workspace.openTextDocument(uri).then((doc) => {
+      vscode.window.showTextDocument(doc, { preview: false }).then((editor) => {
+        const targetLine = Math.max(0, (line || 1) - 1);
+        const position = new vscode.Position(targetLine, 0);
+        const range = new vscode.Range(position, position);
+        editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+        editor.selection = new vscode.Selection(position, position);
+      });
+    }, () => {
+      vscode.window.showWarningMessage(`Unable to open ${filePath}`);
+    });
+  }
+
+  log(message) {
+    this.output.appendLine(message);
+  }
+}
+
+class BlinterConfigurationProvider {
+  provideDebugConfigurations() {
+    return [
+      {
+        name: 'Launch Batch (Blinter)',
+        type: 'blinter-debug',
+        request: 'launch',
+        program: '${file}'
+      }
+    ];
+  }
+
+  resolveDebugConfiguration(folder, config) {
+    if (!config.type) {
+      config.type = 'blinter-debug';
+    }
+    if (!config.request) {
+      config.request = 'launch';
+    }
+    if (!config.program) {
+      const editor = vscode.window.activeTextEditor;
+      if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+        config.program = editor.document.uri.fsPath;
+      } else {
+        vscode.window.showErrorMessage('Select a batch file or set "program" in launch.json to use the Blinter debugger.');
+        return null;
+      }
+    }
+    return config;
+  }
+}
+
+class BlinterDebugAdapterFactory {
+  constructor(controller) {
+    this.controller = controller;
+  }
+
+  createDebugAdapterDescriptor(session) {
+    return new vscode.DebugAdapterInlineImplementation(new BlinterInlineDebugAdapter(this.controller, session));
+  }
+}
+
+class BlinterInlineDebugAdapter {
+  constructor(controller, session) {
+    this.controller = controller;
+    this.session = session;
+    this._onDidSendMessage = new vscode.EventEmitter();
+    this.onDidSendMessage = this._onDidSendMessage.event;
+
+    this.inner = new InlineDebugAdapterSession(controller, session, {
+      spawn: (command, args, options) => cp.spawn(command, args, options)
+    });
+
+    this.innerSubscription = this.inner.onDidSendMessage((message) => {
+      this._onDidSendMessage.fire(message);
+    });
+  }
+
+  handleMessage(message) {
+    this.inner.handleMessage(message);
+  }
+
+  dispose() {
+    if (this.innerSubscription) {
+      this.innerSubscription.dispose();
+      this.innerSubscription = undefined;
+    }
+    if (this.inner) {
+      this.inner.dispose();
+      this.inner = undefined;
+    }
+    this._onDidSendMessage.dispose();
+  }
+}
+
+class BlinterOutputViewProvider {
+  constructor(extensionUri, controller) {
+    this.extensionUri = extensionUri;
+    this.controller = controller;
+    this._view = undefined;
+    this._data = { groups: [] };
+    this._status = { state: 'idle', detail: '' };
+  }
+
 		resolveWebviewView(webviewView) {
 			this._view = webviewView;
 			const webview = webviewView.webview;
-			const iconPathOnDisk = path.join(this.context.extensionPath, 'icons', 'blinter-logo.svg');
-			const iconUri = webview.asWebviewUri(vscode.Uri.file(iconPathOnDisk));
-			webviewView.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(path.join(this.context.extensionPath, 'icons'))] };
-			webviewView.webview.html = `<!doctype html>
-			<html lang="en"><head>
-			<meta charset="utf-8" />
-			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-			<style>
-			body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; padding: 12px; }
-			.header { display:flex; align-items:center; gap:12px }
-			.header img { width:36px; height:36px }
-			.button { margin-top:12px }
-			.status { margin-top:10px; color: #666 }
-			</style>
-			</head><body>
-			<div class="header">
-				<img src="${iconUri}" alt="Blinter" />
-				<h3 style="margin:0">Blinter</h3>
-			</div>
-			<div>
-				<p>Run the Blinter linter on the active BAT file.</p>
-				<button id="run" class="button">Run Blinter</button>
-				<button id="openOutput" class="button">Show Output</button>
-				<div class="status" id="status">Status: idle</div>
-			</div>
-			<script>
-			const vscodeApi = acquireVsCodeApi();
-			document.getElementById('run').addEventListener('click', () => {
-				vscodeApi.postMessage({ command: 'run' });
-			});
-			document.getElementById('openOutput').addEventListener('click', () => {
-				vscodeApi.postMessage({ command: 'output' });
-			});
-			window.addEventListener('message', event => {
-				const msg = event.data;
-				if (msg.command === 'status') {
-					document.getElementById('status').textContent = 'Status: ' + msg.text;
-				}
-			});
-			</script>
-			</body></html>`;
-			webviewView.webview.onDidReceiveMessage((msg) => {
-				if (msg.command === 'run') {
-					vscode.commands.executeCommand('blinter.run');
-				} else if (msg.command === 'output') {
-					// Show the Blinter output channel
-					vscode.commands.executeCommand('workbench.action.output.toggleOutput');
-					vscode.commands.executeCommand('workbench.action.output.open');
-				}
-			}, null, this.context.subscriptions);
-		}
+    webview.options = {
+      enableScripts: true
+    };
+    webview.html = this.renderHtml(webview);
 
-		postStatus(text) {
-			try {
-				if (this._view && this._view.webview) {
-					this._view.webview.postMessage({ command: 'status', text });
-				}
-			} catch (e) {
+    webview.onDidReceiveMessage((msg) => {
+      if (msg?.command === 'reveal' && msg.path) {
+        this.controller.revealLocation(msg.path, msg.line);
+      }
+    });
+
+    this.postUpdate();
+  }
+
+  ensureVisible() {
+    if (this._view && typeof this._view.show === 'function') {
+      try {
+        this._view.show(true);
+      } catch {
 				// ignore
 			}
 		}
-	}
-	const provider = new BlinterViewProvider(context);
-	context.subscriptions.push(vscode.window.registerWebviewViewProvider('blinter.view', provider));
+    vscode.commands.executeCommand('workbench.view.debug');
+  }
 
-	// Automatic triggers based on settings
-	const debounceDelay = vscode.workspace.getConfiguration('blinter').get('debounceDelay', 500);
+  update(data) {
+    this._data = data || { groups: [] };
+    this.postUpdate();
+  }
 
-	// onSave
-	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((doc) => {
-		const c = vscode.workspace.getConfiguration('blinter');
-		if (!c.get('enabled', true)) return;
-		if (c.get('runOn', 'onSave') === 'onSave' && doc.languageId === 'bat') {
-			runBlinterOnDocument(doc);
-		}
-	}));
+  updateStatus(status) {
+    this._status = status || { state: 'idle', detail: '' };
+    this.postUpdate();
+  }
 
-	// onType (debounced)
-	context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((e) => {
-		const c = vscode.workspace.getConfiguration('blinter');
-		if (!c.get('enabled', true)) return;
-	if (String(c.get('runOn', 'onSave')) !== 'onType') return;
-		const doc = e.document;
-		if (doc.languageId !== 'bat') return;
+  postUpdate() {
+    if (!this._view) {
+      return;
+    }
+    this._view.webview.postMessage({
+      command: 'refresh',
+      payload: {
+        groups: this._data.groups || [],
+        status: this._status
+      }
+    });
+  }
 
-		const key = doc.uri.toString();
-		if (debounceTimers.has(key)) clearTimeout(debounceTimers.get(key));
-		const timeout = setTimeout(() => {
-			runBlinterOnDocument(doc);
-			debounceTimers.delete(key);
-		}, c.get('debounceDelay', debounceDelay));
-		debounceTimers.set(key, timeout);
-	}));
+  renderHtml(webview) {
+    const cspSource = webview.cspSource;
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; script-src 'unsafe-inline'; style-src 'unsafe-inline';" />
+    <style>
+      body {
+        font-family: var(--vscode-font-family);
+        color: var(--vscode-foreground);
+        background-color: transparent;
+        padding: 12px;
+      }
+      h2 {
+        margin: 0 0 8px 0;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--vscode-titleBar-activeForeground);
+      }
+      .status {
+        font-size: 12px;
+        margin-bottom: 12px;
+        color: var(--vscode-descriptionForeground);
+      }
+      .group {
+        margin-bottom: 12px;
+      }
+      .group-header {
+        font-weight: 600;
+        font-size: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .group-items {
+        border: 1px solid var(--vscode-list-hoverBackground);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .item {
+        display: flex;
+        gap: 8px;
+        padding: 6px 8px;
+        font-size: 12px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--vscode-list-hoverBackground);
+      }
+      .item:last-child {
+        border-bottom: none;
+      }
+      .item:hover {
+        background-color: var(--vscode-list-hoverBackground);
+      }
+      .line {
+        font-family: var(--vscode-editor-font-family);
+        color: var(--vscode-textLink-foreground);
+        min-width: 72px;
+      }
+      .severity-error {
+        color: var(--vscode-errorForeground);
+      }
+      .severity-warning {
+        color: var(--vscode-editorWarning-foreground);
+      }
+      .empty {
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        padding: 12px;
+        border: 1px dashed var(--vscode-list-hoverBackground);
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="status" id="status">Waiting for Blinter...</div>
+    <div id="content"></div>
+    <script>
+      const vscodeApi = acquireVsCodeApi();
 
-	// Watch for configuration changes that affect behavior
-	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-		if (e.affectsConfiguration('blinter')) {
-			output.appendLine('Blinter configuration changed.');
-		}
-	}));
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
 
-	// Update status bar when active editor changes
-	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateStatusBar));
-	context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(updateStatusBar));
+      function formatStatus(status) {
+        if (!status) {
+          return 'Waiting for Blinter...';
+        }
+        switch (status.state) {
+          case 'running':
+            return 'Running analysis' + (status.detail ? ' — ' + escapeHtml(status.detail) : '');
+          case 'completed':
+            return status.detail ? escapeHtml(status.detail) : 'Analysis complete';
+          case 'errored':
+            return status.detail ? escapeHtml(status.detail) : 'Blinter encountered an error';
+          default:
+            return status.detail ? escapeHtml(status.detail) : 'Idle';
+        }
+      }
 
-	// Initialize status bar visibility
-	updateStatusBar();
+      function render(payload) {
+        const statusEl = document.getElementById('status');
+        const container = document.getElementById('content');
+
+        statusEl.textContent = formatStatus(payload.status);
+
+        const groups = Array.isArray(payload.groups) ? payload.groups : [];
+        const hasItems = groups.some(group => Array.isArray(group.items) && group.items.length > 0);
+
+        if (!hasItems) {
+          container.innerHTML = '<div class="empty">No diagnostics captured yet.</div>';
+          return;
+        }
+
+        const parts = [];
+        for (const group of groups) {
+          if (!Array.isArray(group.items) || group.items.length === 0) {
+            continue;
+          }
+          parts.push('<div class="group">');
+          parts.push('<div class="group-header">');
+          parts.push('<span>' + escapeHtml(group.label) + '</span>');
+          parts.push('<span>' + group.items.length + '</span>');
+          parts.push('</div>');
+          parts.push('<div class="group-items">');
+          for (const item of group.items) {
+            const severityClass = item.severity ? 'severity-' + escapeHtml(item.severity) : '';
+            const displayLine = escapeHtml(item.fileName) + ':' + escapeHtml(item.line || 0);
+            parts.push('<div class="item" data-path="' + escapeHtml(item.filePath) + '" data-line="' + escapeHtml(item.line || 0) + '">');
+            parts.push('<span class="line ' + severityClass + '">' + displayLine + '</span>');
+            parts.push('<span>' + escapeHtml(item.message) + '</span>');
+            parts.push('</div>');
+          }
+          parts.push('</div></div>');
+        }
+
+        container.innerHTML = parts.join('');
+      }
+
+      document.addEventListener('click', (event) => {
+        const target = event.target.closest('.item');
+        if (!target) {
+          return;
+        }
+        const path = target.getAttribute('data-path');
+        const line = Number(target.getAttribute('data-line')) || 0;
+        vscodeApi.postMessage({ command: 'reveal', path, line });
+      });
+
+      window.addEventListener('message', (event) => {
+        if (event.data && event.data.command === 'refresh') {
+          render(event.data.payload || {});
+        }
+      });
+    </script>
+  </body>
+</html>`;
+  }
 }
 
-// This method is called when your extension is deactivated
-function deactivate() {}
-
-module.exports = {
-	activate,
-	deactivate
+function escapeMarkdown(value) {
+  return String(value || '')
+    .replace(/[\\`*_{}\[\]()#+\-.!]/g, '\\$&');
 }
