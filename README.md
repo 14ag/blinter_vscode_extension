@@ -12,6 +12,23 @@ Blinter integrates the native Blinter executable into Visual Studio Code’s **R
 - Visual Studio Code 1.75.0 or higher (stable or Insiders).
 - Bundled native `blinter.exe` in `bin/` (or `bins/`) inside the extension. The extension does **not** fall back to Python scripts.
 
+Important third-party notice
+----------------------------
+This extension bundles the upstream Blinter linter (standalone executable) produced
+by the Blinter project (author: `tboy1337`). The bundled executable in this
+repository is `bin/Blinter-v1.0.94.exe` (Blinter v1.0.94). Blinter itself is
+licensed under the GNU AGPL-3.0 (AGPL-3.0-or-later). By bundling the executable
+we are redistributing AGPL-licensed code; please review the upstream
+license (https://github.com/tboy1337/Blinter) and ensure the AGPL obligations are
+acceptable for your distribution channel. The extension code (this repository)
+is released under the MIT license (see `LICENSE`).
+
+Credits
+-------
+- Blinter (core linter executable): tboy1337 — https://github.com/tboy1337/Blinter
+- This VS Code integration and extension scaffolding: Blinter VS Code Extension
+  contributors (see repository history / git log)
+
 ## Quick start
 1. Confirm `bin/blinter.exe` is included alongside the extension (already bundled in the published VSIX).
 2. Open a workspace that contains the batch file you want to lint.

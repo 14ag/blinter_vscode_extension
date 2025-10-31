@@ -7,6 +7,30 @@ Checklist before packaging
 - Ensure `bin/blinter.exe` (Windows native) is present in the repository root under `bin/` (or `bins/` if you've renamed the folder).
 - Ensure `.vscodeignore` does **not** exclude `bin/` or the executable. The repository’s ignore settings already keep it.
 - The extension no longer ships or references Python scripts; only the native executable is required.
+
+Third-party license & redistribution notes
+-----------------------------------------
+The bundled native executable is a third-party project (Blinter) authored by
+`tboy1337` and licensed under the GNU AGPL-3.0. The executable included in this
+repository at the time of writing is `bin/Blinter-v1.0.94.exe` (Blinter v1.0.94).
+
+Important: redistributing AGPL-licensed binaries carries strong copyleft
+obligations. If you redistribute a VSIX containing the AGPL binary, you must
+ensure recipients have access to the corresponding source (upstream Blinter
+source is available at https://github.com/tboy1337/Blinter). Review legal
+requirements for AGPL before publishing this extension to the Marketplace or
+any other distribution channel.
+
+If shipping an AGPL binary is not acceptable for your distribution, consider
+one of the following alternatives:
+
+- Do not bundle the executable in the VSIX; instead provide an installer or
+	post-install download step that fetches the binary directly from the
+	upstream project (ensuring they accept the license and distribution method).
+- Use the pip-installable Python package approach (recommended by upstream) and
+	invoke `python -m blinter` rather than bundling the PyInstaller executable.
+- Replace the executable with a user-provided path and surface a clear
+	configuration option for users to point to an installed Blinter binary.
 - Choose a `publisher` name and set `engines.vscode` in `package.json` to the supported VS Code range.
 - Verify the documentation (README / `project.txt`) references the Run & Debug flow and the `blinter-debug` launch configuration.
 

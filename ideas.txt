@@ -1,3 +1,0 @@
-make this an extension for debugging batch so that it runs when user clicks on 'run and debug' from the primary side bar
-make the line numbers clickable buttons that tske you to the lines with error
-make the lines with errors highlight within the code an show the error or warning message on hover. maybe show or track variables

@@ -11,4 +11,4 @@ Based on observed differences and predicted behavior:
 Adjust or refactor relevant code, documentation, or configuration in the local repo to match the new version’s logic.
 Commit and document all changes clearly, explaining what was modified and why
 
-what i mean isgo to  https://github.com/tboy1337/Blinter and check for any implementation changes. also notice that i have updated the version of the exe in the bin directory to the latest one. test it out and make any changes to the repo based on how this version works. also check blinters source code to predict its output on debugging various batch files. use this info to make any changes here.
+what i mean is, go to  https://github.com/tboy1337/Blinter and check for any implementation changes. also notice that i have updated the version of the exe in the bin directory to the latest one. test it out and make any changes to the repo based on how this version works. also check blinters source code to predict its output on debugging various batch files. use this info to make any changes here.
