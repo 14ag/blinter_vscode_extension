@@ -5,6 +5,7 @@ const cp = require('child_process');
 
 const { findBlinterExecutable } = require('./lib/discovery');
 const { analyzeLine, buildVariableIndexFromFile } = require('./lib/analysis');
+const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 
 function activate(context) {
@@ -96,6 +97,36 @@ class BlinterController {
           this.handleProcessExit(this.lastExitCode ?? 0);
           this.currentSessionId = undefined;
         }
+      })
+    );
+
+    // Automatic linting on save/onType
+    const debounceTimers = new Map();
+    context.subscriptions.push(
+      vscode.workspace.onDidSaveTextDocument((doc) => {
+        const config = vscode.workspace.getConfiguration('blinter');
+        if (!config.get('enabled', true)) return;
+        if (config.get('runOn', 'onSave') === 'onSave' && (doc.languageId === 'bat' || doc.languageId === 'cmd')) {
+          this.lintDocument(doc);
+        }
+      })
+    );
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        const config = vscode.workspace.getConfiguration('blinter');
+        if (!config.get('enabled', true)) return;
+        if (String(config.get('runOn', 'onSave')) !== 'onType') return;
+        const doc = e.document;
+        if (doc.languageId !== 'bat' && doc.languageId !== 'cmd') return;
+
+        const key = doc.uri.toString();
+        if (debounceTimers.has(key)) clearTimeout(debounceTimers.get(key));
+        const timeout = setTimeout(() => {
+          this.lintDocument(doc);
+          debounceTimers.delete(key);
+        }, config.get('debounceDelay', 500));
+        debounceTimers.set(key, timeout);
       })
     );
 
@@ -196,15 +227,33 @@ class BlinterController {
       throw new Error('Blinter is disabled in settings. Enable "blinter.enabled" to run debugging.');
     }
 
-    const workspaceFolder = session?.workspaceFolder?.uri?.fsPath
-      || args.workspaceFolder
-      || (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
-        ? vscode.workspace.workspaceFolders[0].uri.fsPath
-        : undefined);
+    // Support single-file mode: if no workspace, use the file's directory
+    let workspaceFolder = session?.workspaceFolder?.uri?.fsPath
+      || args.workspaceFolder;
+    
+    // Resolve program path first to handle ${file} variables
+    let programPath;
+    if (args.program === '${file}' || args.program === '${fileBasename}') {
+      const editor = vscode.window.activeTextEditor;
+      if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+        programPath = editor.document.uri.fsPath;
+      } else {
+        throw new Error('No active batch file found. Open a .bat or .cmd file first.');
+      }
+    } else {
+      if (!workspaceFolder && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+        workspaceFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
+      }
+      programPath = this.resolveProgramPath(args.program, workspaceFolder);
+    }
 
-    const programPath = this.resolveProgramPath(args.program, workspaceFolder);
     if (!fs.existsSync(programPath)) {
       throw new Error(`Program not found: ${programPath}`);
+    }
+
+    // Set workspace root to file's directory if no workspace
+    if (!workspaceFolder) {
+      workspaceFolder = path.dirname(programPath);
     }
 
     const executablePath = findBlinterExecutable(this.context.extensionPath, process.platform);
@@ -245,10 +294,12 @@ class BlinterController {
     if (path.isAbsolute(program)) {
       return path.normalize(program);
     }
+    // Support single-file mode: if no workspace, resolve relative to current working directory
     if (workspaceFolder) {
       return path.normalize(path.join(workspaceFolder, program));
     }
-    return path.normalize(path.resolve(program));
+    // Fallback: try resolving relative to process cwd
+    return path.normalize(path.resolve(process.cwd(), program));
   }
 
   resolveRulesPath(rulesPath, workspaceFolder, programPath) {
@@ -511,10 +562,138 @@ class BlinterController {
   log(message) {
     this.output.appendLine(message);
   }
+
+  async lintDocument(document) {
+    if (document.languageId !== 'bat' && document.languageId !== 'cmd') {
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('blinter');
+    if (!config.get('enabled', true)) {
+      return;
+    }
+
+    const filePath = document.uri.fsPath;
+    if (!filePath) {
+      return;
+    }
+
+    const executablePath = findBlinterExecutable(this.context.extensionPath, process.platform);
+    if (!executablePath) {
+      this.log('Blinter executable not found for linting. Ensure blinter.exe is in bin/ or bins/');
+      return;
+    }
+
+    const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+      ? vscode.workspace.workspaceFolders[0].uri.fsPath
+      : path.dirname(filePath);
+
+    this.currentProgramPath = filePath;
+    this.currentWorkspaceRoot = workspaceFolder;
+    this.variableIndex = buildVariableIndexFromFile(filePath, fs);
+
+    const rulesPathSetting = config.get('rulesPath') || null;
+    const resolvedRulesPath = rulesPathSetting
+      ? this.resolveRulesPath(rulesPathSetting, workspaceFolder, filePath)
+      : null;
+
+    const execArgs = [filePath];
+    if (resolvedRulesPath) {
+      execArgs.push('--rules', resolvedRulesPath);
+    }
+
+    this.log(`[Linter] Running: ${executablePath} ${execArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+
+    // Clear previous diagnostics for this file
+    this.diagnostics.delete(document.uri);
+    const fileIssues = this.issuesByFile.get(filePath) || [];
+    if (fileIssues.length > 0) {
+      this.issuesByFile.set(filePath, []);
+    }
+
+    try {
+      const proc = cp.spawn(executablePath, execArgs, {
+        cwd: path.dirname(filePath),
+        windowsHide: true
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.setEncoding('utf8');
+      proc.stderr.setEncoding('utf8');
+
+      proc.stdout.on('data', (data) => {
+        stdout += String(data);
+      });
+
+      proc.stderr.on('data', (data) => {
+        stderr += String(data);
+      });
+
+      proc.on('error', (err) => {
+        this.log(`[Linter] Process error: ${err && err.message ? err.message : String(err)}`);
+      });
+
+      await new Promise((resolve) => {
+        proc.on('close', (code) => {
+          if (stderr && stderr.trim()) {
+            this.log(`[Linter] stderr: ${stderr}`);
+          }
+          
+          // Parse the complete stdout using the parser
+          const parsed = parseBlinterOutput(stdout);
+          for (const item of parsed) {
+            const lineNumber = Math.max(0, (item.line || 1) - 1);
+            const range = new vscode.Range(
+              new vscode.Position(lineNumber, 0),
+              new vscode.Position(lineNumber, Number.MAX_SAFE_INTEGER)
+            );
+            const severityMap = {
+              'error': vscode.DiagnosticSeverity.Error,
+              'warning': vscode.DiagnosticSeverity.Warning,
+              'information': vscode.DiagnosticSeverity.Information
+            };
+            const diag = new vscode.Diagnostic(
+              range,
+              `${item.description} (${item.code})`,
+              severityMap[item.severity] || vscode.DiagnosticSeverity.Information
+            );
+            diag.code = item.code;
+            diag.source = 'blinter';
+            
+            if (!this.issuesByFile.has(filePath)) {
+              this.issuesByFile.set(filePath, []);
+            }
+            this.issuesByFile.get(filePath).push({
+              id: `lint-${item.line}-${item.code}`,
+              severity: item.severity,
+              classification: 'Linter',
+              isStupid: item.severity === 'error' || item.severity === 'warning',
+              message: item.description,
+              code: item.code,
+              filePath: filePath,
+              line: item.line,
+              range: {
+                start: { line: lineNumber, character: 0 },
+                end: { line: lineNumber, character: Number.MAX_SAFE_INTEGER }
+              }
+            });
+          }
+          
+          this.flushDiagnostics();
+          resolve(code);
+        });
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.log(`[Linter] Exception: ${message}`);
+    }
+  }
 }
 
 class BlinterConfigurationProvider {
-  provideDebugConfigurations() {
+  provideDebugConfigurations(folder, token) {
     return [
       {
         name: 'Launch Batch (Blinter)',
@@ -525,7 +704,11 @@ class BlinterConfigurationProvider {
     ];
   }
 
-  resolveDebugConfiguration(folder, config) {
+  resolveDebugConfiguration(folder, config, token) {
+    if (!config || typeof config !== 'object') {
+      config = {};
+    }
+    
     if (!config.type) {
       config.type = 'blinter-debug';
     }
@@ -536,11 +719,33 @@ class BlinterConfigurationProvider {
       const editor = vscode.window.activeTextEditor;
       if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
         config.program = editor.document.uri.fsPath;
+      } else if (editor) {
+        // User has a file open but it's not a batch file
+        vscode.window.showWarningMessage('Blinter debugger requires a .bat or .cmd file. Open a batch file first.');
+        return undefined;
       } else {
-        vscode.window.showErrorMessage('Select a batch file or set "program" in launch.json to use the Blinter debugger.');
-        return null;
+        // No active editor - try to use folder if available
+        if (folder && folder.uri) {
+          // Could search for .bat/.cmd files, but for now just show an error
+          vscode.window.showErrorMessage('No batch file is open. Open a .bat or .cmd file, or set "program" in launch.json.');
+          return undefined;
+        }
+        // Single-file mode - can't determine program
+        return undefined;
       }
     }
+    
+    // Resolve ${file} and ${fileBasename} variables if present
+    if (config.program === '${file}' || config.program === '${fileBasename}') {
+      const editor = vscode.window.activeTextEditor;
+      if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+        config.program = editor.document.uri.fsPath;
+      } else {
+        vscode.window.showWarningMessage('${file} variable requires an active batch file. Open a .bat or .cmd file first.');
+        return undefined;
+      }
+    }
+    
     return config;
   }
 }

@@ -65,7 +65,7 @@ Example `launch.json` entry:
 - Diagnostics clear automatically when a session ends; start a new Run & Debug session to refresh analysis.
 
 ## Packaging & publishing
-- Run `npm run package:vsix` to build a distributable VSIX. The script regenerates the icon assets and runs `vsce package`.
+- Run `build.bat` to build a distributable VSIX. The script regenerates the icon assets and runs `vsce package`.
 - See `PACKAGING.md` for end-to-end packaging guidance (including CI notes and artifact checks).
 
 ## License

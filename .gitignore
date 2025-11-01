@@ -1,5 +1,8 @@
 
 node_modules
-*.exe
 *.vscode
 *.vsix
+releases/
+!bin/Blinter-v1.0.94.exe
+project.txt
+idea.txt

@@ -21,20 +21,32 @@ describe('Parser tests', () => {
         assert.strictEqual(issues[1].severity, 'warning');
     });
 
-    it('handles detailed multi-line output', () => {
-        const stdout = `
-[INFO] (I002) -> Variable defined but not used on line 5
-  > Defined at sample.bat:5
-  > Last modified at sample.bat:10
-`;
+    it('parses detailed multi-line Blinter v1.0.94 output format', () => {
+        const stdout = `Line 2: Errorlevel handling difference between .bat/.cmd (W028)
+- Explanation: Commands like APPEND, DPATH, FTYPE, SET, PATH, ASSOC handle errorlevel differently in .bat vs .cmd files
+- Recommendation: Use .cmd extension for consistent errorlevel behavior with these commands
+- Context: Command 'set' handles errorlevel differently in .bat vs .cmd files
+
+Line 1: BAT extension used instead of CMD for newer Windows (S007)
+- Explanation: The .cmd file extension is recommended over .bat for Windows NT and newer versions (Windows 2000+). CMD files support additional features and have better error handling in newer Windows environments
+- Recommendation: Consider renaming .bat files to .cmd for scripts intended for Windows 2000 and newer versions. CMD files provide better compatibility with modern Windows features and improved error reporting
+- Context: Consider using .cmd extension instead of .bat for scripts targeting Windows 2000 and newer`;
         const issues = parseBlinterOutput(stdout);
-        assert.strictEqual(issues.length, 1);
-        const issue = issues[0];
-        assert.strictEqual(issue.severity, 'information');
-        assert.strictEqual(issue.code, 'I002');
-        assert.strictEqual(issue.line, 5);
-        assert.ok(issue.description.includes('Variable defined but not used'));
-        assert.ok(issue.description.includes('Defined at sample.bat:5'));
-        assert.ok(issue.description.includes('Last modified at sample.bat:10'));
+        assert.strictEqual(issues.length, 2);
+        
+        const issue1 = issues[0];
+        assert.strictEqual(issue1.severity, 'warning');
+        assert.strictEqual(issue1.code, 'W028');
+        assert.strictEqual(issue1.line, 2);
+        assert.ok(issue1.description.includes('Errorlevel handling difference'));
+        assert.ok(issue1.description.includes('Explanation'));
+        assert.ok(issue1.description.includes('Recommendation'));
+        assert.ok(issue1.description.includes('Context'));
+        
+        const issue2 = issues[1];
+        assert.strictEqual(issue2.severity, 'information');
+        assert.strictEqual(issue2.code, 'S007');
+        assert.strictEqual(issue2.line, 1);
+        assert.ok(issue2.description.includes('BAT extension used instead of CMD'));
     });
 });

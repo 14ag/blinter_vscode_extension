@@ -4,21 +4,27 @@
 This file contains concise, actionable guidance to help an AI coding assistant work productively in this repository.
 
 Key files
-- `extension.js` — extension entry point. Exports `activate(context)` and `deactivate()`; registers the `blinter.helloWorld` command.
-- `package.json` — VS Code extension manifest. `main` points to `./extension.js`. Scripts:
-  - `npm run lint` runs `eslint .` using `eslint.config.mjs`.
-  - `npm test` runs `vscode-test` (pretest runs lint).
-- `test/extension.test.js` — basic mocha test harness that runs inside VS Code test runner.
+- `extension.js` — extension entry point. Exports `activate(context)` and `deactivate()`. Manages `BlinterController` for diagnostics, decorations, hover providers, and debug adapter integration.
+- `lib/discovery.js` — finds `blinter.exe` in `bin/` or `bins/` folders, supports versioned executables (e.g., `Blinter-v1.0.94.exe`).
+- `lib/analysis.js` — parses Blinter output line-by-line using regex patterns. Handles both legacy and detailed (v1.0.94+) output formats. Tracks variable definitions and builds variable traces.
+- `lib/parser.js` — parses complete Blinter stdout into structured issue objects. Supports multi-line detailed output blocks.
+- `lib/debugAdapterCore.js` — `InlineDebugAdapterSession` class that spawns Blinter process and streams stdout/stderr via DAP.
+- `package.json` — VS Code extension manifest. Defines `blinter-debug` debugger type, activation events (`onDebug:blinter-debug`, `onLanguage:bat`, `onLanguage:cmd`), and configuration properties.
+- `test/parser.test.js`, `test/analysis.test.js`, `test/debugAdapter.test.js` — unit tests for parsing and debug adapter behavior.
 - `eslint.config.mjs` — project ESLint rules and globals (Node, CommonJS, Mocha).
 - `jsconfig.json` — JS/Node config (Node16 modules, ES2022, checkJs enabled).
+- `run_tests.bat` — automation script that runs lint and unit tests, capturing output to `project_logs.log`.
 
 Big picture
-- This is a small VS Code extension implemented in plain CommonJS JavaScript. The extension registers one command (`blinter.helloWorld`) that shows an information message. The codebase follows the classic single-file extension layout: `package.json` (manifest) + `extension.js` (runtime).
-- Tests use the official VS Code test runner (`@vscode/test-electron` / `@vscode/test-cli`) and mocha. Linting is enforced before tests via the `pretest` script.
+- This is a VS Code extension for linting and debugging Windows Batch files (.bat/.cmd). It integrates with VS Code's native Run & Debug UI via a debug adapter (`blinter-debug`), and also provides automatic linting on save/onType.
+- The extension bundles `blinter.exe` (upstream: https://github.com/tboy1337/Blinter) and executes it as a child process, parsing output for diagnostics, variable traces, and "stupid line" decorations.
+- Tests use the official VS Code test runner (`@vscode/test-electron` / `@vscode/test-cli`) and mocha. Unit tests (`npm run test:unit`) can run standalone; integration tests require VS Code test environment.
 
 What to do when making changes
 - Preserve the `activate`/`deactivate` exports in `extension.js`. The test/test-runner and VS Code expect those names.
-- If you add new commands, update `contributes.commands` in `package.json` and register them in `extension.js`.
+- The extension supports both workspace folders and single-file mode (no workspace). Always handle the case where `vscode.workspace.workspaceFolders` is empty.
+- Executable discovery in `lib/discovery.js` checks for `blinter.exe`, `Blinter.exe`, and versioned names (`Blinter-v*.exe`) in `bin/` and `bins/` folders.
+- When modifying output parsing, update both `lib/analysis.js` (streaming line-by-line) and `lib/parser.js` (full output parsing) to maintain consistency.
 - New runtime dependencies must be added to `package.json`. Dev-only test or tooling deps go into `devDependencies`.
 
 Tests and verification
@@ -36,10 +42,14 @@ Integration points
 - No external network or platform-specific services are used by default.
 
 Examples (concrete edits)
-- To add a new command `blinter.checkFile`:
-  1. Add a command entry to `package.json` under `contributes.commands`.
-  2. In `extension.js`, call `vscode.commands.registerCommand('blinter.checkFile', handler)` and push the disposable into `context.subscriptions`.
-  3. Add a unit/integration test in `test/` that launches the extension test runner and verifies the command is registered or behaves as expected.
+- To add a new Blinter configuration option:
+  1. Add a property to `contributes.configuration.properties` in `package.json` (e.g., `blinter.newOption`).
+  2. Read the setting in `extension.js` using `vscode.workspace.getConfiguration('blinter').get('newOption', defaultValue)`.
+  3. Add a test in `test/` if the feature affects parsing or executable discovery.
+- To modify the debug adapter behavior:
+  1. Update `lib/debugAdapterCore.js` for process spawning/streaming logic.
+  2. Update `BlinterController.prepareForLaunch()` in `extension.js` if launch arguments change.
+  3. Run `npm run test:unit` to verify debug adapter tests pass.
 
 Edge cases an assistant should watch for
 - Do not change the extension activation export names (`activate` / `deactivate`).
@@ -49,7 +59,8 @@ If something is unclear
 - Ask about desired activation strategy, making breaking changes to `package.json`, or adding new native modules that require build steps.
 
 After editing
-- Run `npm run lint` then `npm test` and report any linter/test failures. Include stack traces and exact error output.
+- Run `npm run lint` then `npm run test:unit` (or `run_tests.bat` on Windows) and report any linter/test failures. Include stack traces and exact error output.
+- For packaging: `build.bat` handles icon generation and VSIX creation. It temporarily renames versioned executables during packaging.
 
 Contact
 - The repo has no in-repo AI guidance files to merge; treat this file as the canonical short-runner guide for automated agents.
