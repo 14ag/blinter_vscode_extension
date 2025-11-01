@@ -62,17 +62,20 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "breakpoints": [
+      {
+        "language": "bat"
+      }
+    ],
     "debuggers": [
       {
         "type": "blinter",
         "label": "Blinter batch Debugger",
+        "languages": [
+          "bat"
+        ],
         "program": "./out/debugAdapter.js",
         "runtime": "node",
-        "enableBreakpointsFor": {
-          "languageIds": [
-            "bat"
-          ]
-        },
         "configurationAttributes": {
           "blinter": {
             "properties": {
