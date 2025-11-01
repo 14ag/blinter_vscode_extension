@@ -4,7 +4,7 @@ node_modules
 *.vsix
 releases/
 !bin/Blinter-v1.0.94.exe
-project.txt
+!project.txt
 idea.txt
 issues.txt
 *.lnk
