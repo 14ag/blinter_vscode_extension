@@ -43,7 +43,6 @@
   "activationEvents": [
     "onDebug:blinter",
     "onLanguage:batch",
-    "onLanguage:bat",
     "onDebug"
   ],
   "main": "./extension.js",
