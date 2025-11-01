@@ -48,6 +48,17 @@
     "onDebug:blinter-debug"
   ],
   "main": "./extension.js",
+  "files": [
+    "extension.js",
+    "lib/**",
+    "bin/**",
+    "bins/**",
+    "icons/**",
+    "package.json",
+    "README.md",
+    "LICENSE",
+    "jsconfig.json"
+  ],
   "contributes": {
     "languages": [
       {
@@ -120,6 +131,16 @@
         }
       ]
     },
+    "commands": [
+      {
+        "command": "blinter.run",
+        "title": "Blinter: Run"
+      },
+      {
+        "command": "blinter.runAndDebug",
+        "title": "Blinter: Run and Debug"
+      }
+    ],
     "configuration": {
       "title": "Blinter-debug",
       "properties": {

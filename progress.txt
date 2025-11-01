@@ -7,7 +7,7 @@ root: c:\Users\philip\sauce\blinter_vscode_extension
 
 owner: unspecified
 
-last_updated: 2025-11-01T00:00:00Z
+last_updated: 2025-11-02T00:00:00Z
 
 - step_2025-11-01-1:
 	description: Created `run_tests.bat` to automate linting and unit tests, and added a new unit test to `test/parser.test.js` to handle detailed multi-line output. Updated the parser to handle the new output format.
@@ -22,6 +22,25 @@ last_updated: 2025-11-01T00:00:00Z
 	files_changed:
 		- extension.js
 		- package.json
+	actor: automated-agent
+
+- step_2025-11-02-1:
+	description: Standardized debugger type to `blinter-debug` across `package.json` and `extension.js`. Fixed parser to correctly handle legacy and detailed Blinter output formats and added logging while diagnosing parser tests. Ran unit tests (mocha unit suite) and confirmed all unit tests pass locally.
+	files_changed:
+		- lib/parser.js (parser fixes + debug logging)
+		- extension.js (debug config provider updated to `blinter-debug`)
+		- package.json (debugger type and activation events normalized)
+	verification:
+		- Ran `npm run test:unit` locally: 10 passing, 0 failing.
+	actor: automated-agent
+
+- step_2025-11-02-2:
+	description: Prefixed unused function parameters with leading underscores in `extension.js` to indicate intentional unused arguments. Added a `files` whitelist to `package.json` so VSIX packaging includes only runtime files, lib, executables (`bin/`, `bins/`), icons and essential docs. Ran linter and unit tests; unit tests pass (10 passing) and lint reports only warnings about unused variables and assigned-but-unused regex in `lib/analysis.js`.
+	files_changed:
+		- extension.js (prefixed unused params: `_workspaceFolder`, `_token`, `_folder`)
+		- package.json (added `files` whitelist for packaging)
+	verification:
+		- Ran `npm run lint` and `npm run test:unit` locally. Tests: 10 passing. Lint: warnings only.
 	actor: automated-agent
 
 

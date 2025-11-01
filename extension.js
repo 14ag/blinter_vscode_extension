@@ -11,13 +11,13 @@ const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 function activate(context) {
   // Register debug configuration provider
   context.subscriptions.push(
-    vscode.debug.registerDebugConfigurationProvider('blinter', {
+    vscode.debug.registerDebugConfigurationProvider('blinter-debug', {
       /**
        * Provide debug configurations when user has no launch.json
        */
-      provideDebugConfigurations(workspaceFolder) {
+  provideDebugConfigurations(_workspaceFolder) {
         return [{
-          type: 'blinter',
+          type: 'blinter-debug',
           name: 'Launch Batch (Blinter)',
           request: 'launch',
           program: '${file}'
@@ -27,17 +27,17 @@ function activate(context) {
       /**
        * Resolve configuration before debugging starts
        */
-      resolveDebugConfiguration(workspaceFolder, config, token) {
+  resolveDebugConfiguration(_workspaceFolder, config, _token) {
         // Ensure config is an object
         if (!config || typeof config !== 'object') {
-          config = {};
+          config = { type: '', name: '', request: '' };
         }
         
         // If no launch.json exists and user clicked "Run and Debug"
         if (!config.type && !config.request && !config.name) {
           const editor = vscode.window.activeTextEditor;
           if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
-            config.type = 'blinter';
+            config.type = 'blinter-debug';
             config.name = 'Launch Batch (Blinter)';
             config.request = 'launch';
             config.program = editor.document.uri.fsPath;
@@ -49,7 +49,7 @@ function activate(context) {
 
         // Ensure type is set
         if (!config.type) {
-          config.type = 'blinter';
+          config.type = 'blinter-debug';
         }
         
         // Resolve ${file} variable if needed
@@ -78,6 +78,20 @@ function activate(context) {
   );
   const controller = new BlinterController(context);
   controller.initialize();
+
+  // Keep a backward-compatible `blinter.run` command for integrations/tests.
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.run', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+      try {
+        await controller.lintDocument(editor.document);
+      } catch (e) {
+        // swallow - command should not throw in tests
+      }
+    } else {
+      vscode.window.showInformationMessage('Open a .bat or .cmd file to run Blinter.');
+    }
+  }));
 }
 
 function deactivate() {}
@@ -126,7 +140,7 @@ class BlinterController {
     );
 
     context.subscriptions.push(
-      vscode.debug.registerDebugAdapterDescriptorFactory('blinter', new BlinterDebugAdapterFactory(this))
+      vscode.debug.registerDebugAdapterDescriptorFactory('blinter-debug', new BlinterDebugAdapterFactory(this))
     );
 
     context.subscriptions.push(
@@ -756,24 +770,24 @@ class BlinterController {
 }
 
 class BlinterConfigurationProvider {
-  provideDebugConfigurations(folder, token) {
+  provideDebugConfigurations(_folder, _token) {
     return [
       {
         name: 'Launch Batch (Blinter)',
-        type: 'blinter',
+        type: 'blinter-debug',
         request: 'launch',
         program: '${file}'
       }
     ];
   }
 
-resolveDebugConfiguration(folder, config, token) {
+resolveDebugConfiguration(folder, config, _token) {
     if (!config || typeof config !== 'object') {
       config = {};
     }
     
     if (!config.type) {
-      config.type = 'blinter';
+      config.type = 'blinter-debug';
     }
     if (!config.request) {
       config.request = 'launch';

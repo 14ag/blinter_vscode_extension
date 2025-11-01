@@ -3,8 +3,9 @@ const { runTests } = require('@vscode/test-electron');
 
 async function main() {
   try {
-    const extensionDevelopmentPath = path.resolve(__dirname, '..');
-    const extensionTestsPath = path.resolve(__dirname, 'extension.test.js');
+  const extensionDevelopmentPath = path.resolve(__dirname, '..');
+  // The test runner entrypoint that bootstraps Mocha and loads tests
+  const extensionTestsPath = path.resolve(__dirname, 'suite', 'index.js');
 
   // Allow running tests against a specific VS Code build (e.g. 'insiders') via
   // the VSCODE_VERSION env var. If not provided, runTests will choose default.
