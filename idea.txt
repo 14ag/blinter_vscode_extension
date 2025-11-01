@@ -12,7 +12,7 @@ read project.txt, progress.txt and update .github\copilot-instructions.md
 blackbox test observations and call to action:
 when user opens a single batch file then clicks on 'run and debug' vscode says: You don't have an extension for debugging Batch. Should we find a Batch extension in the Marketplace?
 fetch the official debugger extension documentation to see the exact requirements and compare it to this to find out why it does this.  i want this extension to run when i click 'Run and debug'
-i have modified some lines in the activation function in extension.js in attempt to fix. take a look 
+i have modified some lines in extension.js in attempt to fix. take a look 
 use the mcp tools available, build.bat and "\.vscode-test\vscode-win32-x64-archive-1.105.1\bin\install_extension.bat" to continuously test and modify till it works when user clicks run and debug in vscode while a single batch file is open.
 
 i would like the extension to work on single files too. if possible, introduce the beheviour it used to have where the extension is triggered on saving the batch as an addition to the current beheviour. like a linter. i want t to be a linter and a debugger.

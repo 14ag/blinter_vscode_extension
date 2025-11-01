@@ -42,10 +42,10 @@
   ],
   "activationEvents": [
     "onDebugInitialConfigurations",
-    "onDebugResolve:blinter",
+    "onDebugResolve:blinter-debug",
     "onLanguage:bat",
     "onLanguage:cmd",
-    "onDebug:blinter"
+    "onDebug:blinter-debug"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -69,15 +69,10 @@
     ],
     "debuggers": [
       {
-        "type": "blinter",
+        "type": "blinter-debug",
         "label": "Blinter batch Debugger",
-        "languages": [
-          "bat"
-        ],
-        "program": "./out/debugAdapter.js",
-        "runtime": "node",
         "configurationAttributes": {
-          "blinter": {
+          "blinter-debug": {
             "properties": {
               "request": {
                 "type": "string",
@@ -110,7 +105,7 @@
         "initialConfigurations": [
           {
             "name": "Launch Batch (Blinter)",
-            "type": "blinter",
+            "type": "blinter-debug",
             "request": "launch",
             "program": "${file}"
           }
@@ -126,14 +121,14 @@
       ]
     },
     "configuration": {
-      "title": "Blinter",
+      "title": "Blinter-debug",
       "properties": {
-        "blinter.enabled": {
+        "blinter-debug.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable/disable Blinter."
         },
-        "blinter.runOn": {
+        "blinter-debug.runOn": {
           "type": "string",
           "enum": [
             "onSave",
@@ -142,12 +137,12 @@
           "default": "onSave",
           "description": "Run the linter on save or as you type."
         },
-        "blinter.debounceDelay": {
+        "blinter-debug.debounceDelay": {
           "type": "number",
           "default": 500,
           "description": "Delay in milliseconds for onType linting."
         },
-        "blinter.rulesPath": {
+        "blinter-debug.rulesPath": {
           "type": [
             "string",
             "null"
@@ -155,7 +150,7 @@
           "default": null,
           "description": "Path to a custom rules.json file."
         },
-        "blinter.quickFixCodes": {
+        "blinter-debug.quickFixCodes": {
           "type": "array",
           "items": {
             "type": "string"
@@ -167,7 +162,7 @@
           ],
           "description": "List of Blinter diagnostic codes for which quick fixes (command-casing) are offered."
         },
-        "blinter.stupidHighlightColor": {
+        "blinter-debug.stupidHighlightColor": {
           "type": "string",
           "default": "#5a1124",
           "description": "Hex color to use when highlighting problematic 'stupid' lines during debugging."
