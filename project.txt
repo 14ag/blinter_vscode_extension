@@ -115,97 +115,155 @@ Hover & Clickable Problem Display
 * Clicking items in the side panel or Problems list should:
   * Focus the corresponding editor.
   * Scroll smoothly to the line.
-  * Optionally flash the affected line.
+  # Blinter VS Code Extension — Project Summary (polished)
 
-Side Panel (Webview Integration)
+  Source engine: https://github.com/tboy1337/Blinter
 
-* Add a WebviewViewProvider registered under the **Run & Debug container**:
+  Purpose
+  -------
+  Build a professional VS Code extension that provides linting and debugging for Windows batch scripts (.bat, .cmd) using the Blinter engine. The extension must feel native to VS Code: integrate with Run & Debug, surface diagnostics in Problems, provide quick fixes and hovers, and expose a clear configuration surface.
 
-  * ID: `blinter.outputSummary`
-  * Displays categories (Errors, Warnings, Info) with clickable line entries.
-* Click → Reveal corresponding editor location via `vscode.window.showTextDocument()`.
+  Conflict resolution rule (authoritative)
+  -------------------------------------
+  When the original notes contain conflicting ideas, prefer the idea that appears later in the file. This cleaned document already applies that rule: later items (the "project update" section) take precedence over earlier, now-obsolete notes.
 
-Debug Adapter Implementation
+  High-level decisions (canonical)
+  --------------------------------
+  - The extension is a debug + linter extension that contributes a debugger type: `blinter-debug` (this is the canonical runtime type).
+  - The extension bundles a native `blinter.exe` (or platform-appropriate binary) plus a default `rules.json`. It is self-contained and should not require the user to install Blinter separately.
+  - The inline debug adapter model is used (via `lib/debugAdapterCore.js` + `vscode.DebugAdapterInlineImplementation`) so debug sessions stream stdout/stderr into the Debug Console and are parsed live.
 
-* Implemented inline in `extension.js` by wrapping `lib/debugAdapterCore.js` with `vscode.DebugAdapterInlineImplementation`.
-* Launches Blinter process with:
+  User-facing features (must-haves)
+  --------------------------------
+  - Automatic linting (configurable):
+    - `blinter.runOn` = `"onSave"` (default) or `"onType"` (debounced by `blinter.debounceDelay`).
+    - `blinter.enabled` boolean to disable/enable extension functionality.
+    - `blinter.debounceDelay` number (ms) for `onType` mode.
+    - `blinter.rulesPath` optional path to a custom rules.json that overrides bundled rules.
 
-  ```ts
-  spawn('blinter.exe', [args]);
-  ```
-* Forwards stdout/stderr to VS Code debug console and parser.
+  - Native Run & Debug integration:
+    - Contribute debugger type `blinter-debug` and a default `launch.json` example.
+    - Starting a debug session launches the bundled Blinter binary and streams its output into the Debug Console and the extension's parser.
 
-Linter Execution Logic (Merged)
+  - Diagnostics & editor integrations:
+    - Parse Blinter output to produce `vscode.Diagnostic` items (Problems panel).
+    - Map severities: INFO -> Information, WARN -> Warning, ERROR/FATAL -> Error.
+    - Provide hover tooltips, editor decorations, and clickable links that reveal locations.
 
-* The extension must be **self-contained** — bundle the `blinter.exe` and default `rules.json`.
-* Use child process execution (`child_process.spawn`).
-* Handle missing binaries gracefully.
-* Direct all raw outputs to a dedicated **Output Channel** (“Blinter”).
+  - Side panel / webview:
+    - Provide `blinter.outputSummary` as a WebviewViewProvider inside the Run & Debug container to show categorized issues (Errors/Warnings/Info) with clickable file:line entries.
 
-Code Actions (Quick Fixes)
-* Implement `CodeActionProvider` to offer simple automated corrections for certain patterns.
-* Examples:
+  - Quick fixes:
+    - Implement `CodeActionProvider` to offer deterministic fixes (e.g., normalize command casing, add simple missing initializations, remove redundant labels).
 
-  * Fix inconsistent casing (`eChO` → `echo`).
-  * Add missing variable initialization.
-  * Remove redundant labels.
+  Execution and debug adapter behavior
+  -----------------------------------
+  - Debug adapter: inline implementation wrapping `InlineDebugAdapterSession` in `lib/debugAdapterCore.js`. It must:
+    - Spawn the bundled `blinter.exe` with configured args.
+    - Stream stdout/stderr to the Debug Console and to the parser.
+    - Incrementally update diagnostics and variable traces during a session.
+  - PrepareForLaunch workflow:
+    - Resolve `${file}` and workspace folders.
+    - Validate target program exists.
+    - Locate `blinter.exe` in `bin/` or `bins/` (support versioned names like `Blinter-v1.0.94.exe`).
 
----
+  Parsing and diagnostics
+  ----------------------
+  - Parse each output line (legacy and detailed formats) into structured issues: { severity, code, description, filePath?, line?, details? }.
+  - Maintain an internal `issuesStore` keyed by file path for incremental updates and flushing to `vscode.DiagnosticCollection`.
+  - Ensure diagnostics for a file are cleared before each new run.
 
-### 6. Testing & Logging
+  Testing, logging and the mandatory progress file (critical)
+  --------------------------------------------------------
+  This project requires a strict, machine-readable `progress.txt` in the repository root. ALWAYS read `progress.txt` first before modifying any file. The file is the single source of truth for agent handoffs.
 
-* Create a **`progress.txt`** file updated after every significant implementation step.
+  `progress.txt` format (required):
+  - It is a UTF-8 text file with append-only entries. Each entry must include these fields in this order, separated by a blank line between entries:
+    1) ISO-8601 UTC timestamp (e.g. 2025-11-02T15:04:05Z)
+    2) Agent/author name (human or bot)
+    3) Short action/title (1 line)
+    4) Files changed (comma-separated paths) or `NONE`
+    5) Commands run (one per line) or `NONE`
+    6) Artifacts produced (e.g., blinter.vsix, project_logs.log) or `NONE`
+    7) Current test status summary (lint/unit/integration) or `UNKNOWN`
+    8) Short notes and next steps (1-3 lines)
 
-  * Include what was done, remaining steps, and pending tasks.
-  * Must be written in a self-contained format so another AI or agent can continue seamlessly.
-* Create a **batch script** that runs:
+  Example entry:
 
-  ```bat
-  npm run lint > project_logs.log 2>&1
-  npm test >> project_logs.log 2>&1
-  ```
+  2025-11-02T15:04:05Z
+  agent: copilot
+  action: fixed debug adapter type and ran unit tests
+  files: extension.js, package.json
+  commands:
+    npm run lint
+    npm run test:unit
+  artifacts: NONE
+  tests: lint=warn-only, unit=10/10 pass, integration=not-run
+  notes: updated debug type to `blinter-debug`; next: repackage VSIX and run integration tests
 
-  Execute using:
+  Operational rules for agents
+  ---------------------------
+  - ALWAYS read `progress.txt` before changing files and after each prompt or noteworthy task completion. If you cannot read it, stop and ask the user.
+  - After any code change or test run, append exactly one new `progress.txt` entry summarizing what changed and what to do next.
+  - When running tests in CI/local, collect stdout+stderr into `project_logs.log`, summarize the results in `progress.txt`, then truncate or archive `project_logs.log`.
+   - Before editing any file, append a "formatting snapshot" entry to `progress.txt` that captures the file's formatting and a small context snippet. The snapshot must contain these fields (exact order):
+     1) filename (relative path)
+     2) encoding (e.g., UTF-8)
+     3) EOL (LF or CRLF)
+     4) indentation (tabs or spaces + size, e.g., 2 spaces)
+     5) trailing newline present (yes/no)
+     6) total line count
+     7) a 3-line sample showing the intended edit region (preceding, target, following lines)
+     8) one-line intent summary (what the edit will change)
+  
+    Example formatting-snapshot entry (append to `progress.txt` before changing a file):
 
-  ```js
-  spawn('cmd', ['/c', 'run_tests.bat']);
-  ```
+    formatting-snapshot: extension.js
+    encoding: UTF-8
+    eol: CRLF
+    indentation: spaces=2
+    trailing-newline: yes
+    lines: 1104
+    sample:
+      const vscode = require('vscode');
+      const path = require('path');
+      const fs = require('fs');
+    intent: update debug adapter registration from 'blinter' to 'blinter-debug'
 
-  * If execution is not possible in the environment, prompt the user to run manually and confirm when ready.
-  * Parse `project_logs.log` for relevant results, summarize, then clear the log.
+   - Preserve file formatting when editing. Do not run automatic formatters or change EOLs/indentation unless the user explicitly requests it. If formatting changes are necessary, include a before-and-after formatting snapshot in `progress.txt`.
 
----
+  Run/test helper (recommended)
+  -----------------------------
+  Create a batch helper `run_tests.bat` (not added here) with the contents below. Agents should run it via `cmd /c run_tests.bat` and capture the output.
 
-User Experience Flow Summary
+  Contents for `run_tests.bat` (recommended):
 
-1. User opens a `.bat` or `.cmd` file.
-2. VS Code activates Blinter.
-3. Clicking **Run and Debug** launches `blinter-debug`.
-4. Output is captured and visualized:
+    @echo off
+    set LOGFILE=project_logs.log
+    echo Running lint... > %LOGFILE%
+    npm run lint >> %LOGFILE% 2>&1 || echo LINT_FAILED >> %LOGFILE%
+    echo Running unit tests... >> %LOGFILE%
+    npm run test:unit >> %LOGFILE% 2>&1 || echo UNIT_TESTS_FAILED >> %LOGFILE%
+    echo Running integration tests... >> %LOGFILE%
+    npm run test:integration >> %LOGFILE% 2>&1 || echo INTEGRATION_TESTS_FAILED >> %LOGFILE%
 
-   * Debug Console stream
-   * Diagnostics (Problems)
-   * Highlighted code
-   * Hover tips
-   * Side panel classification
-5. Linting continues automatically (onSave/onType) during edits.
-6. Quick Fixes available inline for simple issues.
+  Agent workflow for test runs (two options):
+  - Option A (agent can execute commands): run `cmd /c run_tests.bat`, wait for completion, then parse `project_logs.log` and append a `progress.txt` entry summarizing results. Clear or move `project_logs.log` after parsing.
+  - Option B (agent cannot run commands in environment): ask the user to run `cmd /c run_tests.bat` and upload/confirm `project_logs.log`. After the user confirms, parse and summarize into `progress.txt`.
 
----
+  Deliverables checklist (authoritative)
+  -------------------------------------
+  - [x] Add `lib/debugAdapterCore.js` (inline debug adapter core) and unit tests.
+  - [x] Refactor `extension.js` to register debug configuration, diagnostics, hover provider, decorations, and webview view provider.
+  - [x] Update `package.json` with `blinter-debug` contribution and activation events.
+  - [x] Implement quick fixes for common casing issues.
+  - [ ] Add `run_tests.bat` to automate log capture and test runs.
+  - [x] Document Run & Debug workflow and sample `launch.json` in `README.md` / `PACKAGING.md`.
 
-Deliverables Checklist
+  Notes and next actions (short)
+  -----------------------------
+  1. Ensure `progress.txt` exists and contains the most recent state before making changes.
+  2. Create `run_tests.bat` in the repo root (if automation is required) and update this file when completed.
+  3. Prefer `blinter-debug` as the canonical debug type across code and manifest.
 
-* [x] Update `package.json` (debugger contribution, activation events, settings).
-* [x] Add a reusable debug adapter core (`lib/debugAdapterCore.js`) that can be unit-tested.
-* [x] Refactor `extension.js` to register the debug configuration, diagnostics pipeline, hover provider, decorations, and webview view provider.
-* [x] Implement progress tracking (`progress`).
-* [x] Implement quick fixes for command casing.
-* [ ] Provide `run_tests.bat` or equivalent logging helper (see §6) if automation is required.
-* [x] Document Run & Debug workflow + sample `launch.json` snippet in `README.md` / `PACKAGING.md`.
-* [x] Maintain unit/integration tests covering parser, discovery, analyzer, and debug adapter streaming behavior.
-
-
-MOST IMPORTANT.
-remember about the progress.txt. read it first before touching any file and make sure its upadted as specified respecting its format.
-
-create a txt file called 'progress'. update it after every step in such a way that the info here can be used by different agents with no context to take over, understand everything and proceed with the project from where the previous session ended. if attempted to run unit tests and lint in this environment, but the run outputs were empty maybe because the environment likely doesn't run npm commands here, create a batch script to runs these commands and redirect the stdout and stderr to project_logs.log file. use command `cmd` with the appropriate params to execute the script and await completion. option 2, ask user to execute the commands while redirecting output to project_logs.log then await confirmation to read project_logs.log. from the project_logs.log, gather and store insights then clear the project_logs.log file
+  If anything in this file appears inconsistent with the repository, the source of truth is: the latest entry in `progress.txt` followed by this file. Agents should follow the `progress.txt` rules and then continue.

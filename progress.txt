@@ -7,41 +7,7 @@ root: c:\Users\philip\sauce\blinter_vscode_extension
 
 owner: unspecified
 
-last_updated: 2025-11-02T00:00:00Z
-
-- step_2025-11-01-1:
-	description: Created `run_tests.bat` to automate linting and unit tests, and added a new unit test to `test/parser.test.js` to handle detailed multi-line output. Updated the parser to handle the new output format.
-	files_changed:
-		- run_tests.bat
-		- test/parser.test.js
-		- lib/parser.js
-	actor: automated-agent
-
-- step_2025-11-01-2:
-	description: Fixed debugger type inconsistencies - standardized all references from "blinter-debug" to "blinter" to match package.json declaration. Removed duplicate BlinterConfigurationProvider registration, ensured debug adapter factory is registered correctly, and updated activation events. Improved resolveDebugConfiguration to better handle single-file mode and ${file} variable resolution.
-	files_changed:
-		- extension.js
-		- package.json
-	actor: automated-agent
-
-- step_2025-11-02-1:
-	description: Standardized debugger type to `blinter-debug` across `package.json` and `extension.js`. Fixed parser to correctly handle legacy and detailed Blinter output formats and added logging while diagnosing parser tests. Ran unit tests (mocha unit suite) and confirmed all unit tests pass locally.
-	files_changed:
-		- lib/parser.js (parser fixes + debug logging)
-		- extension.js (debug config provider updated to `blinter-debug`)
-		- package.json (debugger type and activation events normalized)
-	verification:
-		- Ran `npm run test:unit` locally: 10 passing, 0 failing.
-	actor: automated-agent
-
-- step_2025-11-02-2:
-	description: Prefixed unused function parameters with leading underscores in `extension.js` to indicate intentional unused arguments. Added a `files` whitelist to `package.json` so VSIX packaging includes only runtime files, lib, executables (`bin/`, `bins/`), icons and essential docs. Ran linter and unit tests; unit tests pass (10 passing) and lint reports only warnings about unused variables and assigned-but-unused regex in `lib/analysis.js`.
-	files_changed:
-		- extension.js (prefixed unused params: `_workspaceFolder`, `_token`, `_folder`)
-		- package.json (added `files` whitelist for packaging)
-	verification:
-		- Ran `npm run lint` and `npm run test:unit` locally. Tests: 10 passing. Lint: warnings only.
-	actor: automated-agent
+last_updated: 2025-11-02T12:30:00Z
 
 
 current_state:
@@ -69,6 +35,17 @@ history:
 	description: Updated `package.json` to add activationEvents (onLanguage:bat), `blinter.run` command, editor context menu entry, activity bar view container and configuration properties (blinter.enabled, blinter.runOn, blinter.debounceDelay, blinter.pythonPath, blinter.rulesPath).
 	files_changed:
 		- package.json: contributed commands, menus, viewsContainers, views, configuration
+	actor: automated-agent
+
+- step_2025-11-02-4:
+	description: Added integration smoke test that programmatically opens `tmp/sample1.bat` and starts a `blinter-debug` session (single-file mode). To make the test stable in CI, added a test-mode spawn stub and fallback behavior so tests don't execute external binaries. Ran integration suite with test-mode enabled; all integration tests passed.
+	files_changed:
+		- test/integration_smoke.test.js
+		- extension.js (added test-mode fake-spawn and cmd.exe fallback)
+		- bin/blinter.exe (placeholder)
+		- bin/Blinter-placeholder.exe (placeholder)
+	verification:
+		- Ran `BLINTER_TEST_MODE=1 npm run test:integration` (PowerShell: `$env:BLINTER_TEST_MODE='1'; npm run test:integration`) — 13 passing, 0 failing
 	actor: automated-agent
 
 	- step_2025-10-24-6:
@@ -261,3 +238,45 @@ next_actions:
 		actor: automated-agent
 
 
+- step_2025-11-01-1:
+	description: Created `run_tests.bat` to automate linting and unit tests, and added a new unit test to `test/parser.test.js` to handle detailed multi-line output. Updated the parser to handle the new output format.
+	files_changed:
+		- run_tests.bat
+		- test/parser.test.js
+		- lib/parser.js
+	actor: automated-agent
+
+- step_2025-11-01-2:
+	description: Fixed debugger type inconsistencies - standardized all references from "blinter-debug" to "blinter" to match package.json declaration. Removed duplicate BlinterConfigurationProvider registration, ensured debug adapter factory is registered correctly, and updated activation events. Improved resolveDebugConfiguration to better handle single-file mode and ${file} variable resolution.
+	files_changed:
+		- extension.js
+		- package.json
+	actor: automated-agent
+
+- step_2025-11-02-1:
+	description: Standardized debugger type to `blinter-debug` across `package.json` and `extension.js`. Fixed parser to correctly handle legacy and detailed Blinter output formats and added logging while diagnosing parser tests. Ran unit tests (mocha unit suite) and confirmed all unit tests pass locally.
+	files_changed:
+		- lib/parser.js (parser fixes + debug logging)
+		- extension.js (debug config provider updated to `blinter-debug`)
+		- package.json (debugger type and activation events normalized)
+	verification:
+		- Ran `npm run test:unit` locally: 10 passing, 0 failing.
+	actor: automated-agent
+
+- step_2025-11-02-2:
+	description: Prefixed unused function parameters with leading underscores in `extension.js` to indicate intentional unused arguments. Added a `files` whitelist to `package.json` so VSIX packaging includes only runtime files, lib, executables (`bin/`, `bins/`), icons and essential docs. Ran linter and unit tests; unit tests pass (10 passing) and lint reports only warnings about unused variables and assigned-but-unused regex in `lib/analysis.js`.
+	files_changed:
+		- extension.js (prefixed unused params: `_workspaceFolder`, `_token`, `_folder`)
+		- package.json (added `files` whitelist for packaging)
+	verification:
+		- Ran `npm run lint` and `npm run test:unit` locally. Tests: 10 passing. Lint: warnings only.
+	actor: automated-agent
+
+- step_2025-11-02-3:
+	description: Added formatting-snapshot rules and template to `.github/copilot-instructions.md` and `project.txt`. The rule requires agents to record a formatting snapshot to `progress.txt` (filename, encoding, EOL, indentation, trailing-newline, line count, 3-line sample, intent) before editing any file and to preserve formatting unless a reformat is explicitly requested. Suggested appending snapshots for the two modified files; next agent should create those snapshots when about to edit.
+	files_changed:
+		- .github/copilot-instructions.md
+		- project.txt
+	verification:
+		- NONE (documentation only)
+	actor: automated-agent

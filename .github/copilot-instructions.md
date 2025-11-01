@@ -25,6 +25,8 @@ What to do when making changes
 - The extension supports both workspace folders and single-file mode (no workspace). Always handle the case where `vscode.workspace.workspaceFolders` is empty.
 - Executable discovery in `lib/discovery.js` checks for `blinter.exe`, `Blinter.exe`, and versioned names (`Blinter-v*.exe`) in `bin/` and `bins/` folders.
 - When modifying output parsing, update both `lib/analysis.js` (streaming line-by-line) and `lib/parser.js` (full output parsing) to maintain consistency.
+ - When modifying output parsing, update both `lib/analysis.js` (streaming line-by-line) and `lib/parser.js` (full output parsing) to maintain consistency.
+ - Before editing any repository file, record a brief "formatting snapshot" into `progress.txt` (see project rules). The snapshot must include: filename, encoding (UTF-8), detected EOL (LF or CRLF), indentation style (tabs or spaces and size), whether a trailing newline exists, total line count, and a 3-line sample around the intended edit (context). Append a one-line intent summary. This helps downstream agents preserve file formatting and avoid accidental reformatting.
 - New runtime dependencies must be added to `package.json`. Dev-only test or tooling deps go into `devDependencies`.
 
 Tests and verification
@@ -60,6 +62,8 @@ If something is unclear
 
 After editing
 - Run `npm run lint` then `npm run test:unit` (or `run_tests.bat` on Windows) and report any linter/test failures. Include stack traces and exact error output.
+ - Run `npm run lint` then `npm run test:unit` (or `run_tests.bat` on Windows) and report any linter/test failures. Include stack traces and exact error output.
+ - When making any edits, do not reformat files automatically. Preserve the file's original indentation and EOLs unless the user explicitly asks for a reformat. If you must change formatting, record the before/after snapshot in `progress.txt`.
 - For packaging: `build.bat` handles icon generation and VSIX creation. It temporarily renames versioned executables during packaging.
 
 Contact

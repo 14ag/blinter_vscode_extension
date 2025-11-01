@@ -8,7 +8,8 @@ create run_tests.bat to automate lint+unit tests and capture results as project_
 read project.txt, progress.txt and update .github\copilot-instructions.md
 
 
-when its working, (when user opens a batch file working folder) it also prompts user to configure it in the .vscode\launch.json. no call to action here since the user is unsure if this this the common beheviourof linters/debuggers
+when its working, (when user opens a batch file working folder) it also prompts user to configure it in the .vscode\launch.json.
+ no call to action here since the user is unsure if this this the common beheviourof linters/debuggers
 
 
 4.
