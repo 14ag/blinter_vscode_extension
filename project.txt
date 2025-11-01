@@ -43,81 +43,101 @@ Create a vscode.Diagnostic for each reported issue and publish them to a Diagnos
 The diagnostics for a file must be cleared before each new linting run.
 4. Technical Specification (package.json outline)
 {
- "name": "vscode-blinter",
- "displayName": "Blinter",
- "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes.",
- "publisher": "your-name-here",
- "version": "1.0.0",
- "engines": { "vscode": "^1.75.0" },
- "categories": ["Linters"],
- "activationEvents": ["onLanguage:bat"],
- "main": "./extension.js",
- "contributes": {
-   "commands": [
-     {
-       "command": "blinter.run",
-       "title": "Run Blinter on Active File"
-     }
-   ],
-   "menus": {
-     "editor/context": [
-       {
-         "when": "resourceLangId == bat",
-         "command": "blinter.run",
-         "group": "navigation"
-       }
-     ]
-   },
-   "viewsContainers": {
-     "activitybar": [
-       {
-         "id": "blinter-sidebar",
-         "title": "Blinter",
-         "icon": "icons/blinter-logo.svg",
-         "when": "resourceLangId == bat"
-       }
-     ]
-   },
-   "views": {
-     "blinter-sidebar": [
-       {
-         "id": "blinter.view",
-         "name": "Blinter Actions"
-       }
-     ]
-   },
-   "configuration": {
-     "title": "Blinter",
-     "properties": {
-       "blinter.enabled": {
-         "type": "boolean",
-         "default": true,
-         "description": "Enable/disable Blinter."
-       },
-       "blinter.runOn": {
-         "type": "string",
-         "enum": ["onSave", "onType"],
-         "default": "onSave",
-         "description": "Run the linter on save or as you type."
-       },
-       "blinter.debounceDelay": {
-         "type": "number",
-         "default": 500,
-         "description": "Delay in milliseconds for onType linting."
-       },
-       "blinter.pythonPath": {
-           "type": ["string", "null"],
-           "default": null,
-           "description": "Path to the Python executable."
-       },
-       "blinter.rulesPath": {
-           "type": ["string", "null"],
-           "default": null,
-           "description": "Path to a custom rules.json file."
-       }
-     }
-   }
- }
+   "name": "vscode-blinter",
+    "displayName": "Blinter",
+     "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes.",
+      "publisher": "your-name-here",
+       "version": "1.0.0",
+        "engines": { "vscode": "^1.75.0" },
+         "categories": ["Linters"],
+          "activationEvents": ["onLanguage:bat"],
+           "main": "./extension.js",
+            "contributes": {
+                 "commands": [
+                       {
+                               "command": "blinter.run",
+                                      "title": "Run Blinter on Active File"
+                       }
+                 ],
+                    "menus": {
+                           "editor/context": [
+                                   {
+                                             "when": "resourceLangId == bat",
+                                                      "command": "blinter.run",
+                                                               "group": "navigation"
+                                   }
+                           ]
+                    },
+                       "viewsContainers": {
+                             "activitybar": [
+                                     {
+                                               "id": "blinter-sidebar",
+                                                        "title": "Blinter",
+                                                                 "icon": "icons/blinter-logo.svg",
+                                                                          "when": "resourceLangId == bat"
+                                     }
+                             ]
+                       },
+                          "views": {
+                                 "blinter-sidebar": [
+                                         {
+                                                   "id": "blinter.view",
+                                                            "name": "Blinter Actions"
+                                         }
+                                 ]
+                          },
+                             "configuration": {
+                                   "title": "Blinter",
+                                        "properties": {
+                                                 "blinter.enabled": {
+                                                           "type": "boolean",
+                                                                    "default": true,
+                                                                             "description": "Enable/disable Blinter."
+                                                 },
+                                                        "blinter.runOn": {
+                                                                   "type": "string",
+                                                                            "enum": ["onSave", "onType"],
+                                                                                     "default": "onSave",
+                                                                                              "description": "Run the linter on save or as you type."
+                                                        },
+                                                               "blinter.debounceDelay": {
+                                                                         "type": "number",
+                                                                                  "default": 500,
+                                                                                           "description": "Delay in milliseconds for onType linting."
+                                                               },
+                                                                      "blinter.pythonPath": {
+                                                                                   "type": ["string", "null"],
+                                                                                              "default": null,
+                                                                                                         "description": "Path to the Python executable."
+                                                                      },
+                                                                             "blinter.rulesPath": {
+                                                                                         "type": ["string", "null"],
+                                                                                                    "default": null,
+                                                                                                               "description": "Path to a custom rules.json file."
+                                                                             }
+                                        }
+                             }
+            }
 }
 
 create a txt file called 'progress'. update it after every step in such a way that the info here can be used by different agents with no context to take over, understand everything and proceed with the project from where the previous session ended. if attempted to run unit tests and lint in this environment, but the run outputs were empty maybe because the environment likely doesn't run npm commands here, create a batch script to runs these commands and redirect the stdout and stderr to project_logs.log file. use command `cmd` with the appropriate params to execute the script and await completion. option 2, ask user to execute the commands while redirecting output to project_logs.log then await confirmation to read project_logs.log. from the project_logs.log, gather and store insights then clear the project_logs.log file
+                                                                             }
+                                                                      }
+                                                               }
+                                                        }
+                                                 }
+                                        }
+                             }
+                                         }
+                                 ]
+                          }
+                                     }
+                             ]
+                       }
+                                   }
+                           ]
+                    }
+                       }
+                 ]
+            }
+}
