@@ -1,12 +1,14 @@
 1.
 ensure these tasks are done:
-
 create run_tests.bat to automate lint+unit tests and capture results as project_logs.log.
  add a small unit test to lock the new parser behavior when parsing the detailed multi-line output.
 
- read project.txt, progress.txt and update .github\copilot-instructions.md
 
 2.
+read project.txt, progress.txt and update .github\copilot-instructions.md
+
+
+3.
 blackbox test observations and call to action:
 when user opens a single batch file then clicks on 'run and debug' vscode says: You don't have an extension for debugging Batch. Should we find a Batch extension in the Marketplace?
 i would like the extension to work on single files too. if possible, introduce the beheviour it used to have where the extension is triggered on saving the batch as an addition to the current beheviour. like a linter. i want t to be a linter and a debugger.
@@ -16,4 +18,9 @@ when user works on a folder vscode says: Blinter executable not found. Place 'bl
 when its working, (when user opens a batch file working folder) it also prompts user to configure it in the .vscode\launch.json. no call to action here since the user is unsure if this this the common beheviourof linters/debuggers
 
 
+4.
+make that CI tests that run automatically when pushed to github
 
+
+5.
+configure the packaging process to add the docs and files only the ones that are strictly needed by the extension

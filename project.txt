@@ -236,3 +236,6 @@ The Blinter core engine is at: [https://github.com/tboy1337/Blinter](https://git
 * [x] Document Run & Debug workflow + sample `launch.json` snippet in `README.md` / `PACKAGING.md`.
 * [x] Maintain unit/integration tests covering parser, discovery, analyzer, and debug adapter streaming behavior.
 
+
+MOST IMPORTANT.
+remember about the progress.txt. read it first before touching any file and make sure its upadted as specified respecting its format.

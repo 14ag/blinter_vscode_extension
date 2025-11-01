@@ -1,11 +1,13 @@
 @echo off
-setlocal
-for /d %%d in (bin\blinter-*) do (
-    set "blinter_version=%%d"
-    ren %%d Blinter.exe
+setlocal enabledelayedexpansion
+
+for %%d in (bin\blinter-*.exe) do (
+    set "blinter_version=%%~nxd"
+    ren "%%d" "Blinter.exe"
 )
-npm run package:vsix
-ren Blinter.exe %blinter_version%
-endlocal
+
+cmd /c "npm run package:vsix"
+ren "bin\Blinter.exe" "!blinter_version!"
 pause
+endlocal
 exit /b

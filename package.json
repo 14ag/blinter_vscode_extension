@@ -2,48 +2,92 @@
   "name": "blinter",
   "displayName": "Blinter",
   "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes",
-  "version": "0.0.1",
+  "icon": "icons/blinter-logo.png",
+  "version": "1.2.0",
+  "publisher": "14ag",
+  "author": {
+    "name": "14ag",
+    "url": "https://github.com/14ag"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/tboy1337/Blinter"
+    "url": "https://github.com/14ag/blinter_vscode_extension"
   },
+  "categories": [
+    "Linters",
+    "Debuggers",
+    "Other"
+  ],
   "engines": {
     "vscode": "^1.105.0"
   },
-  "icon": "icons/blinter-logo.png",
-  "categories": [
-    "Linters"
+  "keywords": [
+    "batch",
+    ".bat",
+    ".cmd",
+    "cmd",
+    "batch file",
+    "batch script",
+    "batch linting",
+    "batch debugging",
+    "batch linter",
+    "batch debugger"
+  ],
+  "keybindings": [
+    {
+      "command": "blinter.runAndDebug",
+      "key": "F5",
+      "enablement": "resourceLangId == 'bat'"
+    }
   ],
   "activationEvents": [
-    "onDebug:blinter-debug",
+    "onDebug:blinter",
+    "onLanguage:batch",
     "onLanguage:bat",
-    "onLanguage:cmd"
+    "onDebug"
   ],
   "main": "./extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "bat",
+        "aliases": [
+          "Batch",
+          "batch"
+        ],
+        "extensions": [
+          ".bat",
+          ".cmd"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
     "debuggers": [
       {
-        "type": "blinter-debug",
-        "label": "Blinter Debugger",
+        "type": "blinter",
+        "label": "Blinter batch Debugger",
         "program": "./out/debugAdapter.js",
+        "runtime": "node",
         "enableBreakpointsFor": {
-          "languageIds": ["bat", "cmd"]
+          "languageIds": [
+            "bat"
+          ]
         },
         "configurationAttributes": {
-          "blinter-launch": {
+          "blinter": {
             "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["blinter-debug"]
-              },
               "request": {
                 "type": "string",
-                "enum": ["launch", "attach"],
+                "enum": [
+                  "launch",
+                  "attach"
+                ],
                 "default": "launch"
               },
               "program": {
                 "type": "string",
-                "description": "Path to the batch file to lint/debug"
+                "description": "Path to the batch file to lint/debug",
+                "default": "${file}"
               },
               "args": {
                 "type": "array",
@@ -54,13 +98,16 @@
                 "default": []
               }
             },
-            "required": ["type", "request", "program"]
+            "required": [
+              "request",
+              "program"
+            ]
           }
         },
         "initialConfigurations": [
           {
             "name": "Launch Batch (Blinter)",
-            "type": "blinter-debug",
+            "type": "blinter",
             "request": "launch",
             "program": "${file}"
           }
@@ -85,7 +132,10 @@
         },
         "blinter.runOn": {
           "type": "string",
-          "enum": ["onSave", "onType"],
+          "enum": [
+            "onSave",
+            "onType"
+          ],
           "default": "onSave",
           "description": "Run the linter on save or as you type."
         },
@@ -95,14 +145,23 @@
           "description": "Delay in milliseconds for onType linting."
         },
         "blinter.rulesPath": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null,
           "description": "Path to a custom rules.json file."
         },
         "blinter.quickFixCodes": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["BLINTER_CASE","CMD_CASE","CASE001"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "BLINTER_CASE",
+            "CMD_CASE",
+            "CASE001"
+          ],
           "description": "List of Blinter diagnostic codes for which quick fixes (command-casing) are offered."
         },
         "blinter.stupidHighlightColor": {
