@@ -41,9 +41,11 @@
     }
   ],
   "activationEvents": [
-    "onDebug:blinter",
-    "onLanguage:batch",
-    "onDebug"
+    "onDebugInitialConfigurations",
+    "onDebugResolve:blinter",
+    "onLanguage:bat",
+    "onLanguage:cmd",
+    "onDebug:blinter"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -57,8 +59,7 @@
         "extensions": [
           ".bat",
           ".cmd"
-        ],
-        "configuration": "./language-configuration.json"
+        ]
       }
     ],
     "breakpoints": [

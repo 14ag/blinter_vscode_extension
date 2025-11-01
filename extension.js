@@ -9,6 +9,73 @@ const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 
 function activate(context) {
+  // Register debug configuration provider
+  context.subscriptions.push(
+    vscode.debug.registerDebugConfigurationProvider('blinter', {
+      /**
+       * Provide debug configurations when user has no launch.json
+       */
+      provideDebugConfigurations(workspaceFolder) {
+        return [{
+          type: 'blinter',
+          name: 'Launch Batch (Blinter)',
+          request: 'launch',
+          program: '${file}'
+        }];
+      },
+      
+      /**
+       * Resolve configuration before debugging starts
+       */
+      resolveDebugConfiguration(workspaceFolder, config, token) {
+        // Ensure config is an object
+        if (!config || typeof config !== 'object') {
+          config = {};
+        }
+        
+        // If no launch.json exists and user clicked "Run and Debug"
+        if (!config.type && !config.request && !config.name) {
+          const editor = vscode.window.activeTextEditor;
+          if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+            config.type = 'blinter';
+            config.name = 'Launch Batch (Blinter)';
+            config.request = 'launch';
+            config.program = editor.document.uri.fsPath;
+          } else {
+            // No batch file open - return undefined to prevent launch
+            return undefined;
+          }
+        }
+
+        // Ensure type is set
+        if (!config.type) {
+          config.type = 'blinter';
+        }
+        
+        // Resolve ${file} variable if needed
+        if (config.program === '${file}' || config.program === '${fileBasename}') {
+          const editor = vscode.window.activeTextEditor;
+          if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+            config.program = editor.document.uri.fsPath;
+          } else {
+            vscode.window.showWarningMessage('${file} variable requires an active batch file. Open a .bat or .cmd file first.');
+            return undefined;
+          }
+        }
+
+        if (!config.program) {
+          vscode.window.showErrorMessage('No batch file specified. Open a .bat or .cmd file, or set "program" in launch.json.');
+          return undefined; // abort launch
+        }
+
+        if (!config.request) {
+          config.request = 'launch';
+        }
+
+        return config;
+      }
+    })
+  );
   const controller = new BlinterController(context);
   controller.initialize();
 }
@@ -59,11 +126,7 @@ class BlinterController {
     );
 
     context.subscriptions.push(
-      vscode.debug.registerDebugConfigurationProvider('blinter-debug', new BlinterConfigurationProvider())
-    );
-
-    context.subscriptions.push(
-      vscode.debug.registerDebugAdapterDescriptorFactory('blinter-debug', new BlinterDebugAdapterFactory(this))
+      vscode.debug.registerDebugAdapterDescriptorFactory('blinter', new BlinterDebugAdapterFactory(this))
     );
 
     context.subscriptions.push(
@@ -84,7 +147,7 @@ class BlinterController {
 
     context.subscriptions.push(
       vscode.debug.onDidStartDebugSession((session) => {
-        if (session.type === 'blinter-debug') {
+        if (session.type === 'blinter') {
           this.currentSessionId = session.id;
           this.webviewProvider?.ensureVisible();
         }
@@ -93,7 +156,7 @@ class BlinterController {
 
     context.subscriptions.push(
       vscode.debug.onDidTerminateDebugSession((session) => {
-        if (session.type === 'blinter-debug') {
+        if (session.type === 'blinter') {
           this.handleProcessExit(this.lastExitCode ?? 0);
           this.currentSessionId = undefined;
         }
@@ -697,20 +760,20 @@ class BlinterConfigurationProvider {
     return [
       {
         name: 'Launch Batch (Blinter)',
-        type: 'blinter-debug',
+        type: 'blinter',
         request: 'launch',
         program: '${file}'
       }
     ];
   }
 
-  resolveDebugConfiguration(folder, config, token) {
+resolveDebugConfiguration(folder, config, token) {
     if (!config || typeof config !== 'object') {
       config = {};
     }
     
     if (!config.type) {
-      config.type = 'blinter-debug';
+      config.type = 'blinter';
     }
     if (!config.request) {
       config.request = 'launch';
