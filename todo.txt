@@ -22,3 +22,160 @@ configure the packaging process to add the docs and files only the ones that are
 
 6.
 fetch the official debugger extension documentation to see the exact requirements
+
+
+7.
+
+This (https://github.com/14ag/blinter_vscode_extension/tree/debug-and-decorators) extension uses release v1.0.94 of this (https://github.com/tboy1337/Blinter) repo. However, there have been several releases since that version. The extension is limited by the binaries' capabilities. i made comparisons between v1.0.94 and the latest Blinter version, then made a list of improvements and feature additions I can make based on what the developer added to Blinter. I checked both repositories and the Blinter release history and produced a focused, actionable comparison and a prioritized list of extension improvements you can implement so the VS Code extension benefits from the Blinter work since `v1.0.94`.here is a summary the important changes in Blinter since `v1.0.94`, show how those changes affect the extension (technical impact), then give a prioritized, concrete list of feature additions and implementation notes you can apply to `14ag/blinter_vscode_extension` (branch `debug-and-decorators`). I cite the Blinter releases page and the extension repo where relevant.
+
+
+Short summary of what I found
+
+The Blinter repo shows frequent releases after `v1.0.94` (v1.0.95 → v1.0.101 as of the repository releases list). The release entries note new rules, security checks, dependency updates, logging/test tweaks and version bumps. ([GitHub][1])
+Your extension currently targets Blinter `v1.0.94` (you said so and the repo branch you pointed at references that). The extension appears to bundle/invoke Blinter binaries rather than using a pip-installed module (extension repo visible). ([GitHub][2])
+
+
+ **New / updated rules (security & style):**
+
+   * New security rules added (examples: UNC path checks).
+   * New W001-style rule(s) implemented (e.g., “W001 rule to check for missing EX…” — the release note snippet indicates the addition of new diagnostics).
+   * More rules and incremental rule-set expansion across the versions.
+     Impact: the CLI now emits more rule codes and new categories (SEC / P / W / S) that the extension must parse and represent. ([GitHub][1])
+
+ **Improved logging and tests (and small behavioral changes):**
+
+   * Several releases note logging/test modifications and suppressed warnings in tests — implies CLI output shape may have changed slightly (verbosity, formatting for test runs). ([GitHub][1])
+
+ **Dependency / encoding handling changes:**
+
+   * Replacement of `chardet` with `charset_normalizer` was noted in a release — suggests improved encoding detection/compatibility. This can affect input encoding detection and message output encoding. ([GitHub][1])
+
+ **Packaging / assets changes:**
+
+   * Releases mention moved icon files and changes to `Blinter.spec` — meaning packaged binary/asset names or layout could differ between versions. ([GitHub][1])
+
+ **Frequent version bumps (v1.0.95 → v1.0.101):**
+
+   * Shows active maintenance; small additions/bugfixes that may change rule IDs, output formatting, and binary artifacts over time. ([GitHub][1])
+
+---
+
+# Direct effects on the VS Code extension
+
+* **New diagnostics need to be recognized**: The extension’s parser must accept new rule codes (SECxxx, Pxxx, new W/S rules) and map them to appropriate VS Code `DiagnosticSeverity` and UI elements. If it only recognizes the old set, new issues will be invisible or misclassified. ([GitHub][1])
+* **Binary naming/paths may have changed**: If the extension bundles a specific binary filename or expects assets in a fixed layout, packaging changes in Blinter releases could break the extension’s binary lookup. ([GitHub][1])
+* **Encoding of output**: If Blinter changed encoding handling (charset_normalizer replacement), the extension must ensure it reads CLI stdout/stderr with the correct encoding to avoid garbled messages. ([GitHub][1])
+* **Output format / verbosity**: Logging changes can alter the CLI output (extra lines, different prefixes). The extension’s parser must be robust to minor formatting changes. ([GitHub][1])
+
+---
+## high priority
+
+ **Update / make the Blinter binary/version selectable**
+
+   * Add a setting `blinter.binaryPath` and `blinter.useSystemBlinter` so user can point to a pip-installed `blinter` or to a local binary. Also add `blinter.binaryVersion` query command that runs `blinter --version` (or `python -m blinter --version`) and shows it in the extension UI.
+   * Why: prevents breakage when binary file names or packaging change; allows users to use latest pip version rather than packaged exe.
+   * Implementation note: spawn child process with explicit `encoding: 'utf8'` (or use `iconv-lite` if you need robust decodings) and read both stdout/stderr. Handle non-zero exit codes gracefully.
+
+ **Make diagnostics parser tolerant & support new rule codes**
+
+   * Update the parser regexes to accept the full rule code families (`E\d+`, `W\d+`, `S\d+`, `SEC\d+`, `P\d+`) and optional context fields. Map:
+
+     * `E*` → `DiagnosticSeverity.Error`
+     * `W*` → `DiagnosticSeverity.Warning`
+     * `SEC*` → `DiagnosticSeverity.Warning` or `Error` (configurable)
+     * `S*` → `Information` or `Hint`
+     * `P*` → `Information` (performance)
+   * Why: new rules will be emitted by Blinter and must be shown in VS Code problems pane and decorations.
+   * Implementation note: add unit tests asserting that example lines for each rule type parse correctly.
+
+ **Handle new security rules (UNC / path checks) in UI**
+
+   * Detect SEC rules and surface them with stronger decorations and a “security” quick-info popup linking to the rule docs.
+   * Why: security warnings deserve higher visibility.
+   * Implementation note: include an action in the hover that opens the specific Blinter rule page (rule id parameterized URL if docs are hosted).
+
+ **Fix encoding handling when reading CLI output**
+
+   * Use `child_process.spawn` with `stdio: 'pipe'` and specify read encoding explicitly. If messages still appear garbled, support an option `blinter.encoding` with values `utf8`, `utf16le`, etc., and auto-detect by trying common encodings (or prefer pip installation which returns native Python output).
+   * Why: recent dependency changes indicate encoding behavior may have changed. ([GitHub][1])
+
+## Medium priority — UX and developer tooling
+
+ **Expose rule enable/disable and severity overrides in extension settings**
+
+   * Add `blinter.rules.enabled` (array) and `blinter.rules.overrides` (map rule→severity). Provide a quick configuration command that opens workspace settings prefilled with the relevant keys.
+   * Why: Blinter has many rules; letting users tune them from VS Code is standard UX.
+
+ **Add inline code actions / quick-fixes for common rules**
+
+   * For simple fixes (e.g., missing `EXIT` or obvious formatting), provide `CodeAction` implementations that modify the document. If Blinter doesn’t provide a suggested fix, consider a “suppress this diagnostic” action that inserts a `:: blinter: disable SEC001` comment (or whichever suppression method Blinter supports).
+   * Why: reduces friction for users fixing issues.
+
+ **Rule documentation in hover + problems pane link**
+
+   * When user hovers a diagnostic or sees it in problems, show a short rule description and a link “Open rule docs” (point to Blinter docs / rule page). Implement a local fallback if internet is absent (show explanation from bundled JSON if available).
+   * Why: users need context to fix issues quickly.
+
+ **Add a version compatibility check and user warning**
+
+   * On activation, check the bundled binary version vs expected. If mismatch, show a non-modal notification: “Extension bundled Blinter vX—some features may be unavailable; use `blinter.useSystemBlinter` to point at a newer Blinter.”
+   * Why: avoids silent incorrect behavior if the extension was built for v1.0.94 and Blinter added rules/formatting later.
+
+## Low priority — polish and testing
+
+ **Support streamed/async analysis with progress bar**
+
+   * If Blinter supports streaming output for large analyses, parse stdout incrementally and update progress in the UI (status bar). If not, show a spinner with estimated file counts.
+   * Why: better UX for large projects.
+
+ **Update packaged binary on CI and test harness**
+
+    * Modify the extension CI workflow so it can optionally download the latest Blinter exe from Releases (or prefer pip install in the CI runner). Add integration tests that run Blinter over sample `.bat` files and assert diagnostics.
+    * Why: prevents regressions when Blinter output changes.
+
+ **Map UNC path and other new rules to decorations**
+
+    * For rules like UNC path checks, provide file gutter decorations or inline squiggles with specific tooling tips (e.g., highlight network path literals).
+    * Why: more actionable and visually clear than plain problems list.
+
+ **Graceful fallback when binary is flagged by AV**
+
+    * Because Blinter exe is PyInstaller-packed and can be flagged, add a fallback instruction in the extension README: how to `pip install Blinter` and set `blinter.useSystemBlinter: true`. Optionally detect AV-like errors when launching and print a helpful message. ([GitHub][1])
+
+---
+
+# Recommended minimal roadmap (what to implement first - pragmatic order)
+
+1. **Parser hardening & rule support** (High) — accept new rule families; tests.
+2. **Binary selection + version check** (High) — `blinter.binaryPath` and `useSystemBlinter`.
+3. **Encoding handling** (High) — fix stdout/stderr reading robustness.
+4. **Expose rule toggles and severity overrides** (Medium).
+5. **Hover docs & quick links to rule pages** (Medium).
+6. **Add integration tests in CI (using pip-install mode)** (Low/Medium).
+7. **UX polish: code actions, progress UI, dedicated security decoration** (Medium/Low).
+
+
+
+Add or replace your CLI-line regex with something like:
+
+```js
+// Example JavaScript Regex to parse output lines like:
+// path/to/file.bat:123:45: W001 Missing EXIT statement - explanation (W001)
+const DIAG_RE = /^(?<file>.+?):(?<line>\d+):(?<col>\d+):\s*(?<code>(?:SEC|E|W|S|P)\d+)\s+(?<message>.+)$/i;
+```
+
+* This accepts the SEC prefix and the others and gives named groups to populate `Diagnostic` fields.
+* Add a fallback parser that looks for JSON output if Blinter later adds a `--json` output mode (watch for such releases).
+* Test with sample lines for each rule family.
+
+---
+
+# Tests you should add
+
+* Unit tests for parsing: sample outputs for `E`, `W`, `S`, `SEC`, `P` lines.
+* End-to-end test: run `pip install Blinter==<latest>` in CI environment and run sample `.bat` files asserting that extension parses diagnostics. (CI can run in pip mode to avoid exe false-positive downloads.)
+
+
+
+[1]: https://github.com/tboy1337/Blinter/releases "Releases · tboy1337/Blinter · GitHub"
+[2]: https://github.com/14ag/blinter_vscode_extension/blob/debug-and-decorators/package.json "blinter_vscode_extension/package.json at debug-and-decorators · 14ag/blinter_vscode_extension · GitHub"
