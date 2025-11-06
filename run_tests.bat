@@ -33,6 +33,6 @@ if %TEST_EXIT% neq 0 (
     exit /b %TEST_EXIT%
 )
 
-echo All tests passed.
+echo All tests passed
 endlocal
 exit /b 0
