@@ -9,10 +9,7 @@ on:
 jobs:
   lint-and-unit:
     name: Lint and Unit Tests
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - name: Clean workspace
         run: |
@@ -57,8 +54,7 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
 
-      - name: Run tests via batch script (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Run tests via batch script
         shell: cmd
         continue-on-error: true
         run: |
@@ -131,7 +127,7 @@ jobs:
     needs: vscode-tests-and-package
     # Only publish on tag pushes (release tags). This avoids publishing from every push/PR.
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Clean workspace
         run: |
