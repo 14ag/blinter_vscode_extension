@@ -49,4 +49,16 @@ Line 1: BAT extension used instead of CMD for newer Windows (S007)
         assert.strictEqual(issue2.line, 1);
         assert.ok(issue2.description.includes('BAT extension used instead of CMD'));
     });
+
+    it('parses SEC and P rule families', () => {
+        const stdout = `[WARN] (SEC001) -> UNC path used on line 10\n[INFO] (P123) -> Performance note on line 12`;
+        const issues = parseBlinterOutput(stdout);
+        assert.strictEqual(issues.length, 2);
+        assert.strictEqual(issues[0].code, 'SEC001');
+        assert.strictEqual(issues[0].severity, 'warning');
+        assert.strictEqual(issues[0].line, 10);
+        assert.strictEqual(issues[1].code, 'P123');
+        assert.strictEqual(issues[1].severity, 'information');
+        assert.strictEqual(issues[1].line, 12);
+    });
 });

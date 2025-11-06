@@ -92,6 +92,47 @@ function activate(context) {
       vscode.window.showInformationMessage('Open a .bat or .cmd file to run Blinter.');
     }
   }));
+
+  // Show the detected blinter version (uses configured binaryPath or system blinter if enabled)
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.showVersion', async () => {
+    const config = vscode.workspace.getConfiguration('blinter');
+    const binaryPath = config.get('binaryPath') || null;
+    const useSystem = !!config.get('useSystemBlinter');
+
+    // Prefer configured binary, otherwise use discovery to pick one
+    let exe = null;
+    try {
+      exe = findBlinterExecutable(context.extensionPath, process.platform, undefined, { binaryPath, useSystemBlinter: useSystem });
+    } catch {
+      exe = null;
+    }
+
+    const spawnCmd = exe || (useSystem ? (process.platform === 'win32' ? 'blinter.exe' : 'blinter') : null);
+    if (!spawnCmd) {
+      vscode.window.showInformationMessage('No Blinter executable found. Configure "blinter.binaryPath" or enable "blinter.useSystemBlinter".');
+      return;
+    }
+
+    const cp = require('child_process');
+    try {
+      const probe = cp.spawn(spawnCmd, ['--version'], { windowsHide: true });
+      let out = '';
+      let err = '';
+      if (probe.stdout) probe.stdout.setEncoding('utf8');
+      if (probe.stderr) probe.stderr.setEncoding('utf8');
+      probe.stdout && probe.stdout.on('data', (d) => out += String(d));
+      probe.stderr && probe.stderr.on('data', (d) => err += String(d));
+      probe.on('close', (code) => {
+        const message = out.trim() || err.trim() || `Exited with code ${code}`;
+        vscode.window.showInformationMessage(`Blinter: ${message}`);
+      });
+      probe.on('error', () => {
+        vscode.window.showWarningMessage('Failed to execute the Blinter command. Ensure it is installed and on PATH, or set "blinter.binaryPath".');
+      });
+    } catch (e) {
+      vscode.window.showWarningMessage('Unable to probe Blinter version. ' + (e && e.message ? e.message : String(e)));
+    }
+  }));
 }
 
 function deactivate() {}
@@ -304,6 +345,9 @@ class BlinterController {
       throw new Error('Blinter is disabled in settings. Enable "blinter.enabled" to run debugging.');
     }
 
+    // Expose configured encoding for the debug adapter session to consume
+    this.currentEncoding = config.get('encoding', 'utf8') || 'utf8';
+
     // Support single-file mode: if no workspace, use the file's directory
     let workspaceFolder = session?.workspaceFolder?.uri?.fsPath
       || args.workspaceFolder;
@@ -333,7 +377,15 @@ class BlinterController {
       workspaceFolder = path.dirname(programPath);
     }
 
-    let executablePath = findBlinterExecutable(this.context.extensionPath, process.platform);
+    // Allow user configuration to override which blinter is used
+    const userConfig = vscode.workspace.getConfiguration('blinter');
+    const binaryPathSetting = userConfig.get('binaryPath') || null;
+    const useSystem = !!userConfig.get('useSystemBlinter');
+
+    let executablePath = findBlinterExecutable(this.context.extensionPath, process.platform, undefined, {
+      binaryPath: binaryPathSetting,
+      useSystemBlinter: useSystem
+    });
     let _fallbackToCmd = false;
     if (!executablePath) {
       // Fallback for test environments or when the bundled executable is missing on Windows
@@ -664,9 +716,15 @@ class BlinterController {
       return;
     }
 
-    const executablePath = findBlinterExecutable(this.context.extensionPath, process.platform);
+    const binaryPathSetting = config.get('binaryPath') || null;
+    const useSystem = !!config.get('useSystemBlinter');
+
+    const executablePath = findBlinterExecutable(this.context.extensionPath, process.platform, undefined, {
+      binaryPath: binaryPathSetting,
+      useSystemBlinter: useSystem
+    });
     if (!executablePath) {
-      this.log('Blinter executable not found for linting. Ensure blinter.exe is in bin/ or bins/');
+      this.log('Blinter executable not found for linting. Ensure blinter.exe is in bin/ or bins/, or configure "blinter.binaryPath" or enable "blinter.useSystemBlinter".');
       return;
     }
 
@@ -706,8 +764,9 @@ class BlinterController {
       let stdout = '';
       let stderr = '';
 
-      proc.stdout.setEncoding('utf8');
-      proc.stderr.setEncoding('utf8');
+      const encoding = config.get('encoding', 'utf8') || 'utf8';
+      if (proc.stdout && typeof proc.stdout.setEncoding === 'function') proc.stdout.setEncoding(encoding);
+      if (proc.stderr && typeof proc.stderr.setEncoding === 'function') proc.stderr.setEncoding(encoding);
 
       proc.stdout.on('data', (data) => {
         stdout += String(data);

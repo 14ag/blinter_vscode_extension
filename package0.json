@@ -1,0 +1,229 @@
+{
+  "name": "blinter",
+  "displayName": "Blinter",
+  "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes",
+  "icon": "icons/blinter-logo.png",
+  "version": "1.11.6",
+  "publisher": "14ag",
+  "author": {
+    "name": "14ag",
+    "url": "https://github.com/14ag"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/14ag/blinter_vscode_extension"
+  },
+  "categories": [
+    "Linters",
+    "Debuggers",
+    "Other"
+  ],
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "keywords": [
+    "batch",
+    ".bat",
+    ".cmd",
+    "cmd",
+    "batch file",
+    "batch script",
+    "batch linting",
+    "batch debugging",
+    "batch linter",
+    "batch debugger"
+  ],
+  "keybindings": [
+    {
+      "command": "blinter.runAndDebug",
+      "key": "F5",
+      "enablement": "resourceLangId == 'bat'"
+    }
+  ],
+  "activationEvents": [
+    "onDebugInitialConfigurations",
+    "onDebugResolve:blinter-debug",
+    "onLanguage:bat",
+    "onLanguage:cmd",
+    "onDebug:blinter-debug"
+  ],
+  "main": "./extension.js",
+  "files": [
+    "extension.js",
+    "lib/**",
+    "bin/**",
+    "bins/**",
+    "icons/**",
+    "package.json",
+    "README.md",
+    "LICENSE",
+    "jsconfig.json"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "bat",
+        "aliases": [
+          "Batch",
+          "batch"
+        ],
+        "extensions": [
+          ".bat",
+          ".cmd"
+        ]
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "bat"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "blinter-debug",
+        "label": "Blinter batch Debugger",
+        "configurationAttributes": {
+          "blinter-debug": {
+            "properties": {
+              "request": {
+                "type": "string",
+                "enum": [
+                  "launch",
+                  "attach"
+                ],
+                "default": "launch"
+              },
+              "program": {
+                "type": "string",
+                "description": "Path to the batch file to lint/debug",
+                "default": "${file}"
+              },
+              "args": {
+                "type": "array",
+                "description": "Additional arguments to pass to the batch file",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              }
+            },
+            "required": [
+              "request",
+              "program"
+            ]
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": "Launch Batch (Blinter)",
+            "type": "blinter-debug",
+            "request": "launch",
+            "program": "${file}"
+          }
+        ]
+      }
+    ],
+    "views": {
+      "debug": [
+        {
+          "id": "blinter.outputSummary",
+          "name": "Blinter Output"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "blinter.run",
+        "title": "Blinter: Run"
+      },
+      {
+        "command": "blinter.runAndDebug",
+        "title": "Blinter: Run and Debug"
+      }
+    ],
+    "configuration": {
+      "title": "Blinter-debug",
+      "properties": {
+        "blinter-debug.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable Blinter."
+        },
+        "blinter-debug.runOn": {
+          "type": "string",
+          "enum": [
+            "onSave",
+            "onType"
+          ],
+          "default": "onSave",
+          "description": "Run the linter on save or as you type."
+        },
+        "blinter-debug.debounceDelay": {
+          "type": "number",
+          "default": 500,
+          "description": "Delay in milliseconds for onType linting."
+        },
+        "blinter-debug.rulesPath": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Path to a custom rules.json file."
+        },
+        "blinter-debug.quickFixCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "BLINTER_CASE",
+            "CMD_CASE",
+            "CASE001"
+          ],
+          "description": "List of Blinter diagnostic codes for which quick fixes (command-casing) are offered."
+        },
+        "blinter-debug.stupidHighlightColor": {
+          "type": "string",
+          "default": "#5a1124",
+          "description": "Hex color to use when highlighting problematic 'stupid' lines during debugging."
+        }
+        ,
+        "blinter.useSystemBlinter": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, prefer a 'blinter' executable available on the system PATH instead of the bundled binary."
+        },
+        "blinter.binaryPath": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Optional path to a Blinter binary (absolute or relative to the extension folder). If set, this path will be used to run Blinter."
+        },
+        "blinter.encoding": {
+          "type": "string",
+          "default": "utf8",
+          "description": "Encoding to use when reading Blinter CLI output (e.g., utf8, utf16le)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test",
+    "test:unit": "mocha \"test/parser.test.js\" \"test/discovery.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\"",
+    "test:integration": "node ./test/runTest.js",
+    "prepare:icons": "node ./tools/generate-icons.js",
+    "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.105.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "eslint": "^9.36.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "mocha": "^10.2.0",
+    "vsce": "^2.10.0"
+  }
+}

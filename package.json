@@ -3,7 +3,7 @@
   "displayName": "Blinter",
   "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes",
   "icon": "icons/blinter-logo.png",
-  "version": "1.2.0",
+  "version": "1.11.6",
   "publisher": "14ag",
   "author": {
     "name": "14ag",
@@ -187,6 +187,22 @@
           "type": "string",
           "default": "#5a1124",
           "description": "Hex color to use when highlighting problematic 'stupid' lines during debugging."
+        }
+        ,
+        "blinter.useSystemBlinter": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, prefer a 'blinter' executable available on the system PATH instead of the bundled binary."
+        },
+        "blinter.binaryPath": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Optional path to a Blinter binary (absolute or relative to the extension folder). If set, this path will be used to run Blinter."
+        },
+        "blinter.encoding": {
+          "type": "string",
+          "default": "utf8",
+          "description": "Encoding to use when reading Blinter CLI output (e.g., utf8, utf16le)."
         }
       }
     }

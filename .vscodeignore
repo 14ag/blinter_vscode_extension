@@ -1,10 +1,28 @@
-.vscode/**
-.vscode-test/**
-test/**
-.gitignore
-.yarnrc
-vsc-extension-quickstart.md
-**/jsconfig.json
-**/*.map
-**/eslint.config.mjs
-**/.vscode-test.*
+# Strict packaging ignore: ignore everything except the minimal files needed at runtime
+
+# Ignore everything by default
+*
+**/**
+
+# Allow essential extension runtime files
+!extension.js
+!package.json
+!jsconfig.json
+
+!lib/**
+!bin/**
+!bins/**
+!icons/**
+
+# Documentation and license to include in the package
+!README.md
+!LICENSE
+!CHANGELOG.md
+
+# Keep the prepared icons and other runtime assets
+!icons/**
+
+# Ensure the .vscodeignore itself isn't accidentally ignored by packaging tools
+!.vscodeignore
+
+# Note: tests, node_modules, source ts files and CI configs remain ignored intentionally
