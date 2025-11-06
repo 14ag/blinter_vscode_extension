@@ -280,16 +280,3 @@ next_actions:
 	verification:
 		- NONE (documentation only)
 	actor: automated-agent
-
-formatting_snapshot_before_edit: |
-	filename: .github/workflows/ci.yml
-	encoding: UTF-8
-	eol: LF
-	indentation: spaces (2)
-	trailing_newline: true
-	total_lines: 103
-	sample_context:
-		- "    steps:"
-		- "      - name: Checkout repository"
-		- "        uses: actions/checkout@v4"
-	intent: "Enable full checkout (no depth) and recursive submodules in CI checkout steps to avoid git 128 errors during packaging/tests."
