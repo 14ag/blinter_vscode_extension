@@ -3,9 +3,12 @@ node_modules
 *.vscode
 *.vsix
 releases/
-!bin/*.exe
-!project.txt
 idea.txt
 issues.txt
 *.lnk
 todo.txt
+releases
+
+# whitelist
+!project.txt
+!bin/*.exe
