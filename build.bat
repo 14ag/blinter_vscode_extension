@@ -4,7 +4,7 @@ if defined oldBlinter (
 	move "%oldBlinter%" releases
 	if errorlevel 1 (
 			echo Failed to move "%oldBlinter%" to releases.
-			pause >nul
+			pause
 			endlocal
 			exit /b 1
 		)
@@ -27,7 +27,7 @@ for /f "tokens=1-3 delims=/" %%a in ('date /t') do (
 	)
 :: hh mm ss
 for /f "tokens=1-3 delims=:" %%a in ('time /t') do (
-	set hh=%%b
+	set hh=%%a
 	if "!hh:~0,1!"=="0" set hh=!hh:0=!
 	set y=!hh!
 	)
@@ -50,6 +50,7 @@ for /f "usebackq delims=" %%a in ("package0.json") do (
 	) 
     echo !line!>>package.json
 )
+del "package0.json"
 
 cmd /c "npm run package:vsix"
 
@@ -62,6 +63,7 @@ if exist blinter.vsix (
 	ren "blinter.vsix" "blinter_v1.!x!-build!y!.vsix"
 ) else (
 	echo build failed
+	pause
 	endlocal
 	exit /b 1
 	)

@@ -3,8 +3,9 @@ node_modules
 *.vscode
 *.vsix
 releases/
-!bin/Blinter-v1.0.94.exe
+!bin/*.exe
 !project.txt
 idea.txt
 issues.txt
 *.lnk
+todo.txt
