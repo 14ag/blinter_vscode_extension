@@ -179,3 +179,10 @@ const DIAG_RE = /^(?<file>.+?):(?<line>\d+):(?<col>\d+):\s*(?<code>(?:SEC|E|W|S|
 
 [1]: https://github.com/tboy1337/Blinter/releases "Releases · tboy1337/Blinter · GitHub"
 [2]: https://github.com/14ag/blinter_vscode_extension/blob/debug-and-decorators/package.json "blinter_vscode_extension/package.json at debug-and-decorators · 14ag/blinter_vscode_extension · GitHub"
+
+
+
+
+
+
+https://gemini.google.com/share/144d816a6fbe
