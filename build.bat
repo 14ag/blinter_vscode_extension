@@ -37,10 +37,10 @@ if not defined y set y=00
 echo writing version info...
 ren "package.json" "package0.json"
 set /a "count=0"
-for /f "usebackq delims=" %%a in ("package0.json") do (
+for /f "delims=" %%a in (package0.json) do (
 	set /a count+=1
     set "line=%%a"
-	if %count% lss 11 (
+	if !count! lss 7 (
 		echo . >nul
 		(
 		echo !line! | find /i "version" >nul
@@ -51,6 +51,7 @@ for /f "usebackq delims=" %%a in ("package0.json") do (
     echo !line!>>package.json
 )
 
+del package0.json
 cmd /c "npm run package:vsix"
 
 if defined oldExeName (
