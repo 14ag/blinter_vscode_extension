@@ -1,16 +1,15 @@
-# Blinter — VS Code Batch Linter
+# Blinter — the IDE Batch Linter
 
-Blinter integrates the native Blinter executable into Visual Studio Code’s **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get live diagnostics, variable tracking, and actionable quick fixes while you iterate.
+Blinter integrates the native Blinter executable into the IDE's **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get diagnostics and actionable quick fixes while you iterate.
 
 ## What it does
-- Registers a `blinter-debug` debug type that launches the bundled `blinter.exe` and streams its output into VS Code.
+- Registers a `blinter-debug` debug type that launches the bundled `blinter.exe` and streams its output into the IDE.
 - Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline “stupid line” decorations in sync.
 - Exposes a **Blinter Output** view in the Run & Debug sidebar that groups diagnostics (errors, warnings, undefined variables, etc.) and lets you jump straight to problem lines.
 - Provides command-casing quick fixes (configurable) and detailed variable traces for undefined-variable diagnostics.
 
 ## Requirements
-- Visual Studio Code 1.75.0 or higher (stable or Insiders).
-- Bundled native `blinter.exe` in `bin/` (or `bins/`) inside the extension. The extension does **not** fall back to Python scripts.
+- Visual Studio Code 1.75.0 or higher (stable, Insiders of forks).
 
 Important third-party notice
 ----------------------------
@@ -26,14 +25,13 @@ is released under the MIT license (see `LICENSE`).
 Credits
 -------
 - Blinter (core linter executable): tboy1337 — https://github.com/tboy1337/Blinter
-- This VS Code integration and extension scaffolding: Blinter VS Code Extension
+- This the IDE integration and extension scaffolding: Blinter the IDE Extension
   contributors (see repository history / git log)
 
 ## Quick start
-1. Confirm `bin/blinter.exe` is included alongside the extension (already bundled in the published VSIX).
-2. Open a workspace that contains the batch file you want to lint.
-3. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow VS Code to create a `launch.json` using the snippet below.
-4. Press **Run** (F5). Blinter runs immediately, populating the Problems panel, in-editor highlights, and the Blinter Output view.
+1. Open a workspace that contains the batch file you want to lint.
+2. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow the IDE to create a `launch.json` using the snippet below.
+3. Press **Run** (F5). Blinter runs immediately, populating the Problems panel, in-editor highlights, and the Blinter Output view.
 
 Example `launch.json` entry:
 
@@ -61,7 +59,6 @@ Example `launch.json` entry:
 
 ## Output & troubleshooting
 - View → Output → **Blinter** shows the exact command invocation, stdout, and stderr.
-- If `blinter.exe` cannot be located, a warning is raised and the Output channel logs the lookup paths (`bin/` or `bins/`). Copy the executable into one of those folders and rerun.
 - Diagnostics clear automatically when a session ends; start a new Run & Debug session to refresh analysis.
 
 ## Packaging & publishing

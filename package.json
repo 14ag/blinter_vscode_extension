@@ -19,7 +19,32 @@
     "Other"
   ],
   "engines": {
-    "vscode": "^1.105.0"
+    "vscode": "^1.105.0",
+    "Windsurf": "*",
+    "Gitpod": "*",
+    "code-server": "*",
+    "GitLab Web IDE": "*",
+    "Arduino IDE 2.x": "*",
+    "Cursor": "*",
+    "VSCodium": "*",
+    "Trae": "*",
+    "theia": "*",
+    "code-oss": "*",
+    "codium": "*",
+    "vscodium": "*",
+    "openvscode": "*",
+    "openvscode-server": "*",
+    "eclipse.theia": "*",
+    "cursor": "*",
+    "gitpod": "*",
+    "coder": "*",
+    "openvsx": "*",
+    "arduino-ide": "*",
+    "cloud9": "*",
+    "gitlab-web-ide": "*",
+    "aws-cloud9": "*",
+    "PearlAI": "*",
+    "Antigravity": "*"
   },
   "keywords": [
     "batch",
