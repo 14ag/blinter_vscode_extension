@@ -33,7 +33,6 @@ for /f "tokens=1-3 delims=:" %%a in ('time /t') do (
 	)
 if not defined x set x=0.0
 if not defined y set y=00
-
 echo writing version info...
 ren "package.json" "package0.json"
 set /a "count=0"
@@ -45,7 +44,7 @@ for /f "delims=" %%a in (package0.json) do (
 		(
 		echo !line! | find /i "version" >nul
 		) && (
-			set "line=  "version": "1.!x!","
+			set "line=  "version": "1.!x!0","
 		)
 	) 
     echo !line!>>package.json

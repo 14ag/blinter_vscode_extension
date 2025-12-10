@@ -1,6 +1,6 @@
 {
   "name": "blinter",
-  "version": "1.12.10",
+  "version": "1.12.101",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
   "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes",
@@ -19,32 +19,7 @@
     "Other"
   ],
   "engines": {
-    "vscode": "^1.90.0",
-    "Windsurf": "^1.0.0",
-    "Gitpod": "^1.0.0",
-    "code-server": "^1.0.0",
-    "GitLab Web IDE": "^1.0.0",
-    "Arduino IDE 2.x": "^1.0.0",
-    "Cursor": "^1.0.0",
-    "VSCodium": "^1.0.0",
-    "Trae": "^1.0.0",
-    "theia": "^1.0.0",
-    "code-oss": "^1.0.0",
-    "codium": "^1.0.0",
-    "vscodium": "^1.0.0",
-    "openvscode": "^1.0.0",
-    "openvscode-server": "^1.0.0",
-    "eclipse.theia": "^1.0.0",
-    "cursor": "^1.0.0",
-    "gitpod": "^1.0.0",
-    "coder": "^1.0.0",
-    "openvsx": "^1.0.0",
-    "arduino-ide": "^1.0.0",
-    "cloud9": "^1.0.0",
-    "gitlab-web-ide": "^1.0.0",
-    "aws-cloud9": "^1.0.0",
-    "PearlAI": "^1.0.0",
-    "Antigravity": "^1.0.0"
+    "vscode": "^1.90.0"
   },
   "keywords": [
     "batch",
