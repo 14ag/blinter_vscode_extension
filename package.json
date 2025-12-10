@@ -1,6 +1,6 @@
 {
   "name": "blinter",
-  "version": "1.12.101",
+  "version": "1.12.103",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
   "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes",

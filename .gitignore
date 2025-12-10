@@ -1,10 +1,9 @@
 *.txt
 *.vscode
 *.vsix
-issues.txt
 releases/
-idea.txt
 package0.json
+release_notes.md
 
 ##exeption
 !bin/Blinter-v1.0.94.exe

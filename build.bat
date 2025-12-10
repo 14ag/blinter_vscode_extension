@@ -5,12 +5,14 @@ if defined oldBlinter (
 	if errorlevel 1 (
 			echo Failed to move "%oldBlinter%" to releases.
 			pause >nul
-			endlocal
 			exit /b 1
 		)
 ) else (
 	echo No .vsix file found to move.
 )
+
+set /p "patch=enter the patch number: "
+
 setlocal enabledelayedexpansion
 for %%d in (bin\blinter-*.exe) do (
     set "oldExeName=%%~nxd"
@@ -23,7 +25,7 @@ for /f "tokens=1-3 delims=/" %%a in ('date /t') do (
 	if "!dd:~0,1!"=="0" set dd=!dd:0=!
 	set mm=%%b
 	if "!mm:~0,1!"=="0" set mm=!mm:0=!
-	set x=!mm!.!dd!
+	set x=!mm!.!dd!%patch%
 	)
 :: hh mm ss
 for /f "tokens=1-3 delims=:" %%a in ('time /t') do (
@@ -44,7 +46,8 @@ for /f "delims=" %%a in (package0.json) do (
 		(
 		echo !line! | find /i "version" >nul
 		) && (
-			set "line=  "version": "1.!x!0","
+			set "line=  "version": "1.!x!","
+			echo 1.!x!>version.txt
 		)
 	) 
     echo !line!>>package.json
@@ -57,7 +60,7 @@ if defined oldExeName (
 	ren "bin\Blinter.exe" "!oldExeName!"
 )
 
-rem release_v1.!x!-build!y!.extension
+:: release_v1.!x!-build!y!.extension
 if exist blinter.vsix (
 	ren "blinter.vsix" "blinter_v1.!x!-build!y!.vsix"
 ) else (

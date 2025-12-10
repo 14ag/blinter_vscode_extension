@@ -25,7 +25,7 @@ is released under the MIT license (see `LICENSE`).
 Credits
 -------
 - Blinter (core linter executable): tboy1337 — https://github.com/tboy1337/Blinter
-- This the IDE integration and extension scaffolding: Blinter the IDE Extension
+- Blinter vs code Extension
   contributors (see repository history / git log)
 
 ## Quick start
