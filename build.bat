@@ -25,9 +25,13 @@ for /f "tokens=1-3 delims=/" %%a in ('date /t') do (
 	if "!dd:~0,1!"=="0" set dd=!dd:0=!
 	set mm=%%b
 	if "!mm:~0,1!"=="0" set mm=!mm:0=!
-	set x=!mm!.!dd!%patch%
+	set "yy=%%c"
+	set "yy=!yy:~2,2!"
+	set "x=!mm!.!yy!!dd!%patch%"
 	)
 :: hh mm ss
+echo _!x!_
+pause
 for /f "tokens=1-3 delims=:" %%a in ('time /t') do (
 	set hh=%%b
 	if "!hh:~0,1!"=="0" set hh=!hh:0=!

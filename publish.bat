@@ -27,7 +27,7 @@ for /f "delims=" %%a in (%versionInfoFile%) do (
     set "line0=%%a"
     for /f "tokens=1,2,3 delims=." %%b in ("!line0!") do (
         set "version=%%b.%%c.%%d"
-        set "tag=%%b.%%c"
+        set "tag=%%c.%%d"
     )
 
     
