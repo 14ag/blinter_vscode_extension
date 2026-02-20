@@ -3,7 +3,7 @@
   "version": "1.12.25103",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
-  "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes",
+  "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes (Core v1.0.112)",
   "displayName": "Blinter",
   "author": {
     "name": "14ag",
@@ -51,8 +51,6 @@
   "files": [
     "extension.js",
     "lib/**",
-    "bin/**",
-    "bins/**",
     "icons/**",
     "package.json",
     "README.md",
@@ -139,17 +137,21 @@
       {
         "command": "blinter.runAndDebug",
         "title": "Blinter: Run and Debug"
+      },
+      {
+        "command": "blinter.createConfig",
+        "title": "Blinter: Create Config File"
       }
     ],
     "configuration": {
-      "title": "Blinter-debug",
+      "title": "Blinter",
       "properties": {
-        "blinter-debug.enabled": {
+        "blinter.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable/disable Blinter."
         },
-        "blinter-debug.runOn": {
+        "blinter.runOn": {
           "type": "string",
           "enum": [
             "onSave",
@@ -158,20 +160,12 @@
           "default": "onSave",
           "description": "Run the linter on save or as you type."
         },
-        "blinter-debug.debounceDelay": {
+        "blinter.debounceDelay": {
           "type": "number",
           "default": 500,
           "description": "Delay in milliseconds for onType linting."
         },
-        "blinter-debug.rulesPath": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null,
-          "description": "Path to a custom rules.json file."
-        },
-        "blinter-debug.quickFixCodes": {
+        "blinter.quickFixCodes": {
           "type": "array",
           "items": {
             "type": "string"
@@ -183,26 +177,91 @@
           ],
           "description": "List of Blinter diagnostic codes for which quick fixes (command-casing) are offered."
         },
-        "blinter-debug.stupidHighlightColor": {
+        "blinter.stupidHighlightColor": {
           "type": "string",
           "default": "#5a1124",
           "description": "Hex color to use when highlighting problematic 'stupid' lines during debugging."
-        }
-        ,
-        "blinter.useSystemBlinter": {
-          "type": "boolean",
-          "default": false,
-          "description": "If true, prefer a 'blinter' executable available on the system PATH instead of the bundled binary."
-        },
-        "blinter.binaryPath": {
-          "type": ["string", "null"],
-          "default": null,
-          "description": "Optional path to a Blinter binary (absolute or relative to the extension folder). If set, this path will be used to run Blinter."
         },
         "blinter.encoding": {
           "type": "string",
           "default": "utf8",
           "description": "Encoding to use when reading Blinter CLI output (e.g., utf8, utf16le)."
+        },
+        "blinter.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Python interpreter used to run Blinter. Leave empty to auto-detect (tries python, python3, py)."
+        },
+        "blinter.blinterModule": {
+          "type": "string",
+          "enum": [
+            "module",
+            "script"
+          ],
+          "default": "module",
+          "description": "How to invoke Blinter. 'module' runs 'python -m blinter' (pip-installed). 'script' runs a local blinter.py file directly."
+        },
+        "blinter.blinterScriptPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to blinter.py when blinter.blinterModule is set to 'script'."
+        },
+        "blinter.followCalls": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pass --follow-calls to Blinter. Traces CALL statements into called scripts and shares variable context, eliminating false-positive undefined-variable warnings."
+        },
+        "blinter.minSeverity": {
+          "type": "string",
+          "enum": [
+            "all",
+            "performance",
+            "style",
+            "warning",
+            "error"
+          ],
+          "default": "all",
+          "description": "Minimum severity level to report. E.g. 'warning' suppresses style and performance diagnostics."
+        },
+        "blinter.enabledRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Exclusive list of rule codes to enable (e.g. ['E001', 'W005']). If empty, all rules are enabled. Passed as --enabled-rules to Blinter."
+        },
+        "blinter.disabledRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of rule codes to disable (e.g. ['S007', 'S011']). Passed as --disabled-rules to Blinter."
+        },
+        "blinter.useConfigFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether Blinter should look for and use a blinter.ini in the workspace root. Set to false to pass --no-config."
+        },
+        "blinter.maxLineLength": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum line length for rule S011. Passed as --max-line-length."
+        },
+        "blinter.noRecursive": {
+          "type": "boolean",
+          "default": false,
+          "description": "When linting a directory, only analyze files in the top-level folder (--no-recursive)."
+        },
+        "blinter.suppressionCommentStyle": {
+          "type": "string",
+          "enum": [
+            "REM",
+            "::"
+          ],
+          "default": "REM",
+          "description": "Comment style used when inserting LINT:IGNORE suppression comments."
         }
       }
     }
@@ -211,7 +270,7 @@
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test",
-    "test:unit": "mocha \"test/parser.test.js\" \"test/discovery.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\"",
+    "test:unit": "mocha \"test/parser.test.js\" \"test/blinterRunner.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\"",
     "test:integration": "node ./test/runTest.js",
     "prepare:icons": "node ./tools/generate-icons.js",
     "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"

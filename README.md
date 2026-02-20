@@ -1,41 +1,36 @@
 # Blinter — the IDE Batch Linter
 
-Blinter integrates the native Blinter executable into the IDE's **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get diagnostics and actionable quick fixes while you iterate.
+Blinter integrates the Python-based Blinter linter into the IDE's **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get diagnostics, suppression comments, and actionable quick fixes as you work.
 
 ## What it does
-- Registers a `blinter-debug` debug type that launches the bundled `blinter.exe` and streams its output into the IDE.
-- Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline “stupid line” decorations in sync.
-- Exposes a **Blinter Output** view in the Run & Debug sidebar that groups diagnostics (errors, warnings, undefined variables, etc.) and lets you jump straight to problem lines.
+- Registers a `blinter-debug` debug type that invokes Blinter via Python and streams its output into the IDE.
+- Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline "stupid line" decorations in sync.
+- Exposes a **Blinter Output** view in the Run & Debug sidebar that groups diagnostics and lets you jump straight to problem lines.
 - Provides command-casing quick fixes (configurable) and detailed variable traces for undefined-variable diagnostics.
+- Offers **suppress on this line / suppress next occurrence** quick fixes that insert `LINT:IGNORE` comments.
+- Shows a status bar indicator for `blinter.ini` in the workspace.
+- Provides a **Blinter: Create Config File** command to bootstrap a `blinter.ini` in your workspace.
 
-## Requirements
-- Visual Studio Code 1.75.0 or higher (stable, Insiders of forks).
+## Requirements (Prerequisites)
 
-Important third-party notice
-----------------------------
-This extension bundles the upstream Blinter linter (standalone executable) produced
-by the Blinter project (author: `tboy1337`). The bundled executable in this
-repository is `bin/Blinter-v1.0.94.exe` (Blinter v1.0.94). Blinter itself is
-licensed under the GNU AGPL-3.0 (AGPL-3.0-or-later). By bundling the executable
-we are redistributing AGPL-licensed code; please review the upstream
-license (https://github.com/tboy1337/Blinter) and ensure the AGPL obligations are
-acceptable for your distribution channel. The extension code (this repository)
-is released under the MIT license (see `LICENSE`).
-
-Credits
--------
-- Blinter (core linter executable): tboy1337 — https://github.com/tboy1337/Blinter
-- Blinter vs code Extension
-  contributors (see repository history / git log)
+- **Python 3.10+** installed and accessible on the system PATH, or configured via `blinter.pythonPath`.
+- **Blinter** installed via pip:
+  ```
+  pip install Blinter
+  ```
+  Alternatively, point `blinter.blinterModule` to `"script"` and configure `blinter.blinterScriptPath` to use a local `blinter.py` directly.
+- See the Blinter project for more details: [https://github.com/tboy1337/Blinter](https://github.com/tboy1337/Blinter) (v1.0.112+)
+- Visual Studio Code 1.90.0 or higher.
 
 ## Quick start
-1. Open a workspace that contains the batch file you want to lint.
-2. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow the IDE to create a `launch.json` using the snippet below.
-3. Press **Run** (F5). Blinter runs immediately, populating the Problems panel, in-editor highlights, and the Blinter Output view.
+1. Install Python 3.10+ and run `pip install Blinter`.
+2. Open a workspace that contains the batch file you want to lint.
+3. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow the IDE to create a `launch.json` using the snippet below.
+4. Press **Run** (F5). Blinter runs immediately, populating the Problems panel, in-editor highlights, and the Blinter Output view.
 
 Example `launch.json` entry:
 
-```
+```json
 {
   "version": "0.2.0",
   "configurations": [
@@ -50,22 +45,58 @@ Example `launch.json` entry:
 ```
 
 ## Settings
-- `blinter.enabled` (boolean) – enable/disable the integration entirely.
-- `blinter.runOn` (`"onSave" | "onType"`) – keep the legacy background linting triggers if you prefer automatic runs outside of debugging.
-- `blinter.debounceDelay` (number) – debounce (ms) for `onType` runs.
-- `blinter.rulesPath` (string|null) – optional override for a custom rules JSON file.
-- `blinter.quickFixCodes` (string[]) – diagnostic codes that should offer command-casing quick fixes.
-- `blinter.stupidHighlightColor` (string) – hex color used for highlighted “stupid” lines during a debug session.
+
+### Python interpreter
+- **`blinter.pythonPath`** (string) — Path to the Python interpreter. Leave empty to auto-detect (`python`, `python3`, `py`).
+- **`blinter.blinterModule`** (`"module"` | `"script"`) — How to invoke Blinter. `"module"` runs `python -m blinter` (pip-installed). `"script"` runs a local `blinter.py` file.
+- **`blinter.blinterScriptPath`** (string) — Absolute path to `blinter.py` when `blinterModule` is `"script"`.
+
+### Linting behaviour
+- **`blinter.enabled`** (boolean) — Enable/disable Blinter (`true`).
+- **`blinter.runOn`** (`"onSave"` | `"onType"`) — When to auto-lint (`"onSave"`).
+- **`blinter.debounceDelay`** (number) — Debounce in ms for `onType` runs (`500`).
+- **`blinter.followCalls`** (boolean) — Pass `--follow-calls` to trace CALL statements and eliminate false-positive undefined-variable warnings (`false`).
+- **`blinter.minSeverity`** (`"all"` | `"performance"` | `"style"` | `"warning"` | `"error"`) — Suppress diagnostics below this severity (`"all"`).
+- **`blinter.enabledRules`** (string[]) — Exclusive list of rule codes to enable. Empty = all rules (`[]`).
+- **`blinter.disabledRules`** (string[]) — Rule codes to disable (`[]`).
+- **`blinter.useConfigFile`** (boolean) — Let Blinter read `blinter.ini` from the workspace root (`true`). Set to `false` to pass `--no-config`.
+- **`blinter.maxLineLength`** (number) — Maximum line length for rule S011 (`100`).
+- **`blinter.noRecursive`** (boolean) — When linting a directory, analyze only the top-level folder (`false`).
+
+### Presentation
+- **`blinter.quickFixCodes`** (string[]) — Diagnostic codes that offer command-casing quick fixes.
+- **`blinter.stupidHighlightColor`** (string) — Hex colour for "stupid line" highlights during debug sessions (`#5a1124`).
+- **`blinter.encoding`** (string) — Encoding for Blinter output (`utf8`).
+
+### Suppression comments
+- **`blinter.suppressionCommentStyle`** (`"REM"` | `"::"`) — Comment style for inserted `LINT:IGNORE` comments (`"REM"`).
+
+## Suppression quick fixes
+
+When a Blinter diagnostic appears on a line, the **Quick Fix** (`Ctrl+.`) menu shows:
+
+- **Blinter: Suppress [CODE] on this line** — appends `REM LINT:IGNORE-LINE [CODE]` to the flagged line (or inserts a new comment line above if the line ends with `^`).
+- **Blinter: Suppress [CODE] on next occurrence** — inserts `REM LINT:IGNORE [CODE]` on a new line immediately above the flagged line.
+
+Both actions merge codes if a suppression comment already exists on the target. Multiple codes are joined with `, `.
+
+## Blinter: Create Config File command
+
+Run **Blinter: Create Config File** from the Command Palette to generate a `blinter.ini` in the workspace root using `python -m blinter --create-config`. The file is opened automatically after creation.
+
+The status bar shows `$(gear) blinter.ini` when a config file exists (click to open it), or `$(circle-slash) No blinter.ini` when it doesn't (click to create one). The indicator is only visible when a `.bat` or `.cmd` file is active.
 
 ## Output & troubleshooting
-- View → Output → **Blinter** shows the exact command invocation, stdout, and stderr.
+- **View → Output → Blinter** shows the exact command invocation, stdout, and stderr.
+- If Python is not found, you'll see an actionable notification with a **Configure Python Path** button that opens the `blinter.pythonPath` setting.
 - Diagnostics clear automatically when a session ends; start a new Run & Debug session to refresh analysis.
 
 ## Packaging & publishing
-- Run `build.bat` to build a distributable VSIX. The script regenerates the icon assets and runs `vsce package`.
-- See `PACKAGING.md` for end-to-end packaging guidance (including CI notes and artifact checks).
+- Run `build.bat` to build a distributable VSIX. The script regenerates icon assets and runs `vsce package`.
+- See `PACKAGING.md` for end-to-end packaging guidance.
 
 ## License
 - MIT — see `LICENSE`.
+- Blinter (core linter): tboy1337 — [https://github.com/tboy1337/Blinter](https://github.com/tboy1337/Blinter)
 
-Questions or feature requests? Open an issue or tweak the Blinter Output webview to suit your team’s workflow.
+Questions or feature requests? Open an issue or tweak the Blinter Output webview to suit your team's workflow.

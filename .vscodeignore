@@ -10,8 +10,6 @@
 !jsconfig.json
 
 !lib/**
-!bin/**
-!bins/**
 !icons/**
 
 # Documentation and license to include in the package

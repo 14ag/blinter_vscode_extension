@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const cp = require('child_process');
 
-const { findBlinterExecutable } = require('./lib/discovery');
+const { detectPython, buildArgs, buildCommand } = require('./lib/blinterRunner');
 const { analyzeLine, buildVariableIndexFromFile } = require('./lib/analysis');
 const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
@@ -15,7 +15,7 @@ function activate(context) {
       /**
        * Provide debug configurations when user has no launch.json
        */
-  provideDebugConfigurations(_workspaceFolder) {
+      provideDebugConfigurations(_workspaceFolder) {
         return [{
           type: 'blinter-debug',
           name: 'Launch Batch (Blinter)',
@@ -23,16 +23,16 @@ function activate(context) {
           program: '${file}'
         }];
       },
-      
+
       /**
        * Resolve configuration before debugging starts
        */
-  resolveDebugConfiguration(_workspaceFolder, config, _token) {
+      resolveDebugConfiguration(_workspaceFolder, config, _token) {
         // Ensure config is an object
         if (!config || typeof config !== 'object') {
           config = { type: '', name: '', request: '' };
         }
-        
+
         // If no launch.json exists and user clicked "Run and Debug"
         if (!config.type && !config.request && !config.name) {
           const editor = vscode.window.activeTextEditor;
@@ -51,7 +51,7 @@ function activate(context) {
         if (!config.type) {
           config.type = 'blinter-debug';
         }
-        
+
         // Resolve ${file} variable if needed
         if (config.program === '${file}' || config.program === '${fileBasename}') {
           const editor = vscode.window.activeTextEditor;
@@ -93,49 +93,69 @@ function activate(context) {
     }
   }));
 
-  // Show the detected blinter version (uses configured binaryPath or system blinter if enabled)
-  context.subscriptions.push(vscode.commands.registerCommand('blinter.showVersion', async () => {
-    const config = vscode.workspace.getConfiguration('blinter');
-    const binaryPath = config.get('binaryPath') || null;
-    const useSystem = !!config.get('useSystemBlinter');
+  // "Blinter: Create Config File" command (Task 8)
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.createConfig', async () => {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) {
+      vscode.window.showErrorMessage('No workspace folder open. Open a workspace first.');
+      return;
+    }
+    const workspaceRoot = folders[0].uri.fsPath;
+    const iniPath = path.join(workspaceRoot, 'blinter.ini');
 
-    // Prefer configured binary, otherwise use discovery to pick one
-    let exe = null;
-    try {
-      exe = findBlinterExecutable(context.extensionPath, process.platform, undefined, { binaryPath, useSystemBlinter: useSystem });
-    } catch {
-      exe = null;
+    if (fs.existsSync(iniPath)) {
+      const overwrite = await vscode.window.showWarningMessage(
+        'blinter.ini already exists in the workspace root. Overwrite?',
+        'Yes', 'No'
+      );
+      if (overwrite !== 'Yes') {
+        return;
+      }
     }
 
-    const spawnCmd = exe || (useSystem ? (process.platform === 'win32' ? 'blinter.exe' : 'blinter') : null);
-    if (!spawnCmd) {
-      vscode.window.showInformationMessage('No Blinter executable found. Configure "blinter.binaryPath" or enable "blinter.useSystemBlinter".');
+    const config = vscode.workspace.getConfiguration('blinter');
+    const pythonPath = await detectPython(config.get('pythonPath', ''));
+    if (!pythonPath) {
+      const choice = await vscode.window.showErrorMessage(
+        'Python interpreter not found. Install Python or configure "blinter.pythonPath".',
+        'Configure Python Path'
+      );
+      if (choice === 'Configure Python Path') {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'blinter.pythonPath');
+      }
       return;
     }
 
-    const cp = require('child_process');
-    try {
-      const probe = cp.spawn(spawnCmd, ['--version'], { windowsHide: true });
-      let out = '';
-      let err = '';
-      if (probe.stdout) probe.stdout.setEncoding('utf8');
-      if (probe.stderr) probe.stderr.setEncoding('utf8');
-      probe.stdout && probe.stdout.on('data', (d) => out += String(d));
-      probe.stderr && probe.stderr.on('data', (d) => err += String(d));
-      probe.on('close', (code) => {
-        const message = out.trim() || err.trim() || `Exited with code ${code}`;
-        vscode.window.showInformationMessage(`Blinter: ${message}`);
-      });
-      probe.on('error', () => {
-        vscode.window.showWarningMessage('Failed to execute the Blinter command. Ensure it is installed and on PATH, or set "blinter.binaryPath".');
-      });
-    } catch (e) {
-      vscode.window.showWarningMessage('Unable to probe Blinter version. ' + (e && e.message ? e.message : String(e)));
+    const { command, prefixArgs } = buildCommand(pythonPath, config);
+    const proc = cp.spawn(command, [...prefixArgs, '--create-config'], {
+      cwd: workspaceRoot,
+      windowsHide: true
+    });
+
+    let stderr = '';
+    if (proc.stderr) {
+      proc.stderr.setEncoding('utf8');
+      proc.stderr.on('data', (d) => { stderr += String(d); });
     }
+
+    proc.on('close', async (code) => {
+      if (code === 0 && fs.existsSync(iniPath)) {
+        const doc = await vscode.workspace.openTextDocument(iniPath);
+        vscode.window.showTextDocument(doc);
+      } else {
+        controller.log(`[CreateConfig] Failed (code ${code}): ${stderr}`);
+        vscode.window.showErrorMessage('Failed to create blinter.ini. Check the Blinter Output channel for details.');
+      }
+    });
+
+    proc.on('error', (err) => {
+      controller.log(`[CreateConfig] Error: ${err.message}`);
+      vscode.window.showErrorMessage('Failed to run Blinter. Check the Blinter Output channel for details.');
+    });
   }));
 }
 
-function deactivate() {}
+function deactivate() { }
 
 module.exports = {
   activate,
@@ -155,11 +175,25 @@ class BlinterController {
     this.pendingUpdateTimer = undefined;
     this.status = { state: 'idle', detail: '' };
 
+    // Current lint run cancellation handle
+    this._currentLintHandle = null;
+    // Cached Python path (resolved once per session)
+    this._resolvedPython = null;
+
     this.decorationType = this.createDecorationType();
+
+    // Suppression line decoration (Task 7)
+    this.suppressionDecorationType = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      backgroundColor: 'rgba(128, 128, 128, 0.12)',
+      overviewRulerColor: 'rgba(128, 128, 128, 0.3)',
+      overviewRulerLane: vscode.OverviewRulerLane.Center
+    });
 
     context.subscriptions.push(this.output);
     context.subscriptions.push(this.diagnostics);
     context.subscriptions.push(this.decorationType);
+    context.subscriptions.push(this.suppressionDecorationType);
   }
 
   initialize() {
@@ -174,8 +208,16 @@ class BlinterController {
       })
     );
 
+    // Existing command-casing quick fixes
     context.subscriptions.push(
       vscode.languages.registerCodeActionsProvider('bat', this.createQuickFixProvider(), {
+        providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
+      })
+    );
+
+    // Suppression comment code actions (Task 6)
+    context.subscriptions.push(
+      vscode.languages.registerCodeActionsProvider('bat', this.createSuppressionProvider(), {
         providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
       })
     );
@@ -185,7 +227,10 @@ class BlinterController {
     );
 
     context.subscriptions.push(
-      vscode.window.onDidChangeVisibleTextEditors(() => this.refreshDecorations())
+      vscode.window.onDidChangeVisibleTextEditors(() => {
+        this.refreshDecorations();
+        this.refreshSuppressionDecorations();
+      })
     );
 
     context.subscriptions.push(
@@ -196,6 +241,10 @@ class BlinterController {
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration('blinter.stupidHighlightColor')) {
           this.resetDecorationStyle();
+        }
+        // Reset cached Python when path setting changes
+        if (event.affectsConfiguration('blinter.pythonPath')) {
+          this._resolvedPython = null;
         }
       })
     );
@@ -248,9 +297,55 @@ class BlinterController {
       })
     );
 
+    // Status bar indicator for blinter.ini (Task 9)
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+    context.subscriptions.push(this.statusBarItem);
+    this._updateConfigStatusBar();
+
+    context.subscriptions.push(
+      vscode.window.onDidChangeActiveTextEditor(() => this._updateConfigStatusBar())
+    );
+    context.subscriptions.push(
+      vscode.workspace.onDidCreateFiles(() => this._updateConfigStatusBar())
+    );
+    context.subscriptions.push(
+      vscode.workspace.onDidDeleteFiles(() => this._updateConfigStatusBar())
+    );
+
     this.updateStatus('idle');
     this.updateWebview();
     this.refreshDecorations();
+  }
+
+  /** Task 9: Update the blinter.ini status bar indicator */
+  _updateConfigStatusBar() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || (editor.document.languageId !== 'bat' && editor.document.languageId !== 'cmd')) {
+      this.statusBarItem.hide();
+      return;
+    }
+
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) {
+      this.statusBarItem.hide();
+      return;
+    }
+
+    const iniPath = path.join(folders[0].uri.fsPath, 'blinter.ini');
+    if (fs.existsSync(iniPath)) {
+      this.statusBarItem.text = '$(gear) blinter.ini';
+      this.statusBarItem.tooltip = 'Workspace Blinter config active';
+      this.statusBarItem.command = {
+        command: 'vscode.open',
+        arguments: [vscode.Uri.file(iniPath)],
+        title: 'Open blinter.ini'
+      };
+    } else {
+      this.statusBarItem.text = '$(circle-slash) No blinter.ini';
+      this.statusBarItem.tooltip = 'Click to create a Blinter config file';
+      this.statusBarItem.command = 'blinter.createConfig';
+    }
+    this.statusBarItem.show();
   }
 
   createQuickFixProvider() {
@@ -260,21 +355,21 @@ class BlinterController {
           return [];
         }
 
-			const actions = [];
-			const config = vscode.workspace.getConfiguration('blinter');
+        const actions = [];
+        const config = vscode.workspace.getConfiguration('blinter');
         const allowedCodes = config.get('quickFixCodes', ['BLINTER_CASE', 'CMD_CASE', 'CASE001']);
 
-			for (const diag of context.diagnostics) {
-				const code = diag.code ? String(diag.code) : '';
-				const message = diag.message ? String(diag.message).toLowerCase() : '';
+        for (const diag of context.diagnostics) {
+          const code = diag.code ? String(diag.code) : '';
+          const message = diag.message ? String(diag.message).toLowerCase() : '';
 
-				const codeMatches = code && allowedCodes.includes(code);
-				const messageHintsCase = message.includes('case') || message.includes('casing');
+          const codeMatches = code && allowedCodes.includes(code);
+          const messageHintsCase = message.includes('case') || message.includes('casing');
           if (!codeMatches && !messageHintsCase) {
             continue;
           }
 
-				const lineText = document.lineAt(range.start.line).text;
+          const lineText = document.lineAt(range.start.line).text;
           const match = /^\s*([A-Za-z0-9_@]+)(\b.*)$/m.exec(lineText);
           if (!match) {
             continue;
@@ -282,19 +377,111 @@ class BlinterController {
 
           const commandToken = match[1];
           const rest = match[2] || '';
-				const fixed = commandToken.toLowerCase() + rest;
+          const fixed = commandToken.toLowerCase() + rest;
 
-				const fix = new vscode.CodeAction('Normalize command casing', vscode.CodeActionKind.QuickFix);
-				fix.edit = new vscode.WorkspaceEdit();
-				fix.edit.replace(document.uri, document.lineAt(range.start.line).range, fixed);
-				fix.diagnostics = [diag];
-				fix.isPreferred = true;
-				actions.push(fix);
-			}
+          const fix = new vscode.CodeAction('Normalize command casing', vscode.CodeActionKind.QuickFix);
+          fix.edit = new vscode.WorkspaceEdit();
+          fix.edit.replace(document.uri, document.lineAt(range.start.line).range, fixed);
+          fix.diagnostics = [diag];
+          fix.isPreferred = true;
+          actions.push(fix);
+        }
 
-			return actions;
-		}
-	};
+        return actions;
+      }
+    };
+  }
+
+  /** Task 6: Suppression comment code action provider */
+  createSuppressionProvider() {
+    return {
+      provideCodeActions: (document, range, context) => {
+        if (document.languageId !== 'bat') {
+          return [];
+        }
+
+        const blinterDiags = context.diagnostics.filter(d => d.source === 'blinter' && d.code);
+        if (blinterDiags.length === 0) {
+          return [];
+        }
+
+        const config = vscode.workspace.getConfiguration('blinter');
+        const commentStyle = config.get('suppressionCommentStyle', 'REM') || 'REM';
+        const actions = [];
+
+        // Collect unique codes on this line
+        const codes = [...new Set(blinterDiags.map(d => String(d.code)))];
+        const codeList = codes.join(', ');
+
+        const lineIndex = range.start.line;
+        const lineText = document.lineAt(lineIndex).text;
+
+        // Action 1: Suppress on this line (LINT:IGNORE-LINE)
+        {
+          const label = codes.length === 1
+            ? `Blinter: Suppress ${codes[0]} on this line`
+            : `Blinter: Suppress ${codeList} on this line`;
+          const action = new vscode.CodeAction(label, vscode.CodeActionKind.QuickFix);
+          action.edit = new vscode.WorkspaceEdit();
+          action.diagnostics = [...blinterDiags];
+
+          // Check if line already has a LINT:IGNORE-LINE comment
+          const ignoreLineMatch = lineText.match(/(?:REM|::)\s+LINT:IGNORE-LINE\s+(.*)/i);
+          if (ignoreLineMatch) {
+            // Merge codes
+            const existingCodes = ignoreLineMatch[1].split(',').map(c => c.trim());
+            const allCodes = [...new Set([...existingCodes, ...codes])];
+            const newComment = `${commentStyle} LINT:IGNORE-LINE ${allCodes.join(', ')}`;
+            const commentStart = lineText.search(/(?:REM|::)\s+LINT:IGNORE-LINE/i);
+            const replaceRange = new vscode.Range(lineIndex, commentStart, lineIndex, lineText.length);
+            action.edit.replace(document.uri, replaceRange, newComment);
+          } else if (lineText.trimEnd().endsWith('^')) {
+            // Line continuation — insert on new line above instead
+            const indent = lineText.match(/^(\s*)/)[1];
+            const insertPos = new vscode.Position(lineIndex, 0);
+            action.edit.insert(document.uri, insertPos, `${indent}${commentStyle} LINT:IGNORE-LINE ${codeList}\r\n`);
+          } else {
+            // Append to end of line
+            const endPos = new vscode.Position(lineIndex, lineText.length);
+            action.edit.insert(document.uri, endPos, `  ${commentStyle} LINT:IGNORE-LINE ${codeList}`);
+          }
+          actions.push(action);
+        }
+
+        // Action 2: Suppress next occurrence (LINT:IGNORE above)
+        {
+          const label = codes.length === 1
+            ? `Blinter: Suppress ${codes[0]} on next occurrence`
+            : `Blinter: Suppress ${codeList} on next occurrence`;
+          const action = new vscode.CodeAction(label, vscode.CodeActionKind.QuickFix);
+          action.edit = new vscode.WorkspaceEdit();
+          action.diagnostics = [...blinterDiags];
+
+          // Check if line above already has a LINT:IGNORE comment
+          if (lineIndex > 0) {
+            const aboveLine = document.lineAt(lineIndex - 1).text;
+            const ignoreMatch = aboveLine.match(/(?:REM|::)\s+LINT:IGNORE\s+(.*)/i);
+            if (ignoreMatch) {
+              const existingCodes = ignoreMatch[1].split(',').map(c => c.trim());
+              const allCodes = [...new Set([...existingCodes, ...codes])];
+              const newComment = `${commentStyle} LINT:IGNORE ${allCodes.join(', ')}`;
+              const commentStart = aboveLine.search(/(?:REM|::)\s+LINT:IGNORE\s/i);
+              const replaceRange = new vscode.Range(lineIndex - 1, commentStart, lineIndex - 1, aboveLine.length);
+              action.edit.replace(document.uri, replaceRange, newComment);
+              actions.push(action);
+              return actions;
+            }
+          }
+
+          const indent = lineText.match(/^(\s*)/)[1];
+          const insertPos = new vscode.Position(lineIndex, 0);
+          action.edit.insert(document.uri, insertPos, `${indent}${commentStyle} LINT:IGNORE ${codeList}\r\n`);
+          actions.push(action);
+        }
+
+        return actions;
+      }
+    };
   }
 
   resetDecorationStyle() {
@@ -333,7 +520,7 @@ class BlinterController {
     return new vscode.ThemeColor('editorError.background');
   }
 
-  prepareForLaunch(args, session) {
+  async prepareForLaunch(args, session) {
     this.clearIssues();
 
     if (!args || !args.program) {
@@ -351,7 +538,7 @@ class BlinterController {
     // Support single-file mode: if no workspace, use the file's directory
     let workspaceFolder = session?.workspaceFolder?.uri?.fsPath
       || args.workspaceFolder;
-    
+
     // Resolve program path first to handle ${file} variables
     let programPath;
     if (args.program === '${file}' || args.program === '${fileBasename}') {
@@ -377,40 +564,16 @@ class BlinterController {
       workspaceFolder = path.dirname(programPath);
     }
 
-    // Allow user configuration to override which blinter is used
-    const userConfig = vscode.workspace.getConfiguration('blinter');
-    const binaryPathSetting = userConfig.get('binaryPath') || null;
-    const useSystem = !!userConfig.get('useSystemBlinter');
-
-    let executablePath = findBlinterExecutable(this.context.extensionPath, process.platform, undefined, {
-      binaryPath: binaryPathSetting,
-      useSystemBlinter: useSystem
-    });
-    let _fallbackToCmd = false;
-    if (!executablePath) {
-      // Fallback for test environments or when the bundled executable is missing on Windows
-      if (process.platform === 'win32') {
-        this.log('Blinter executable not found; falling back to cmd.exe to run the batch file (test fallback).');
-        executablePath = 'cmd.exe';
-        _fallbackToCmd = true;
-      } else {
-        throw new Error('Blinter executable not found. Place `blinter.exe` under the extension `bin/` or `bins/` folder.');
-      }
+    // Resolve Python interpreter
+    const pythonPath = await this._getPython();
+    if (!pythonPath) {
+      throw new Error('Python interpreter not found. Install Python or configure "blinter.pythonPath".');
     }
 
-    const rulesPathSetting = args.rulesPath || config.get('rulesPath') || null;
-    const resolvedRulesPath = rulesPathSetting
-      ? this.resolveRulesPath(rulesPathSetting, workspaceFolder, programPath)
-      : null;
-
+    const { command, prefixArgs } = buildCommand(pythonPath, config);
+    const cliArgs = buildArgs(config, programPath);
     const userArgs = Array.isArray(args.args) ? args.args.filter((value) => typeof value === 'string' && value.trim().length > 0) : [];
-
-    // If we fell back to cmd.exe, use ['/c', programPath]; otherwise pass programPath as first arg
-    let execArgs = _fallbackToCmd ? ['/c', programPath] : [programPath];
-    if (resolvedRulesPath && !_fallbackToCmd) {
-      execArgs.push('--rules', resolvedRulesPath);
-    }
-    execArgs.push(...userArgs);
+    const fullArgs = [...prefixArgs, ...cliArgs, ...userArgs];
 
     this.currentProgramPath = programPath;
     this.currentWorkspaceRoot = workspaceFolder || path.dirname(programPath);
@@ -419,13 +582,26 @@ class BlinterController {
     this.webviewProvider?.ensureVisible();
     this.updateWebview();
 
-    this.log(`Launching Blinter: ${executablePath} ${execArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+    this.log(`Launching Blinter: ${command} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
 
     return {
-      executable: executablePath,
-      args: execArgs,
+      executable: command,
+      args: fullArgs,
       cwd: path.dirname(programPath)
     };
+  }
+
+  /** Resolve (and cache) the Python interpreter path */
+  async _getPython() {
+    if (this._resolvedPython) {
+      return this._resolvedPython;
+    }
+    const config = vscode.workspace.getConfiguration('blinter');
+    const pythonPath = await detectPython(config.get('pythonPath', ''));
+    if (pythonPath) {
+      this._resolvedPython = pythonPath;
+    }
+    return pythonPath;
   }
 
   resolveProgramPath(program, workspaceFolder) {
@@ -438,26 +614,6 @@ class BlinterController {
     }
     // Fallback: try resolving relative to process cwd
     return path.normalize(path.resolve(process.cwd(), program));
-  }
-
-  resolveRulesPath(rulesPath, workspaceFolder, programPath) {
-    if (!rulesPath) {
-      return null;
-    }
-    if (path.isAbsolute(rulesPath)) {
-      return path.normalize(rulesPath);
-    }
-    if (workspaceFolder) {
-      const candidate = path.join(workspaceFolder, rulesPath);
-      if (fs.existsSync(candidate)) {
-        return path.normalize(candidate);
-      }
-    }
-    const fromProgram = path.join(path.dirname(programPath), rulesPath);
-    if (fs.existsSync(fromProgram)) {
-      return path.normalize(fromProgram);
-    }
-    return path.normalize(rulesPath);
   }
 
   acceptProcessText(line, channel) {
@@ -522,6 +678,7 @@ class BlinterController {
     }
 
     this.refreshDecorations();
+    this.refreshSuppressionDecorations();
     this.updateWebview();
   }
 
@@ -538,7 +695,9 @@ class BlinterController {
     const severityMap = {
       error: vscode.DiagnosticSeverity.Error,
       warning: vscode.DiagnosticSeverity.Warning,
-      info: vscode.DiagnosticSeverity.Information
+      info: vscode.DiagnosticSeverity.Information,
+      information: vscode.DiagnosticSeverity.Information,
+      hint: vscode.DiagnosticSeverity.Hint
     };
 
     const lineIndex = Math.max(0, (issue.line || 1) - 1);
@@ -576,6 +735,39 @@ class BlinterController {
       }
 
       editor.setDecorations(this.decorationType, stupidRanges);
+    }
+  }
+
+  /** Task 7: Scan for LINT:IGNORE / LINT:IGNORE-LINE comments and apply suppression decorations */
+  refreshSuppressionDecorations() {
+    if (!this.suppressionDecorationType) {
+      return;
+    }
+
+    const SUPPRESSION_RE = /(?:REM|::)\s+LINT:IGNORE(?:-LINE)?\s/i;
+    const editors = vscode.window.visibleTextEditors;
+    for (const editor of editors) {
+      if (editor.document.languageId !== 'bat' && editor.document.languageId !== 'cmd') {
+        editor.setDecorations(this.suppressionDecorationType, []);
+        continue;
+      }
+
+      const ranges = [];
+      const text = editor.document.getText();
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        if (SUPPRESSION_RE.test(lines[i])) {
+          ranges.push(editor.document.lineAt(i).range);
+          // Also dim the target line (the one below for LINT:IGNORE, same line for LINT:IGNORE-LINE)
+          if (/LINT:IGNORE\s/i.test(lines[i]) && !/LINT:IGNORE-LINE/i.test(lines[i])) {
+            // LINT:IGNORE applies to the next line
+            if (i + 1 < lines.length) {
+              ranges.push(editor.document.lineAt(i + 1).range);
+            }
+          }
+        }
+      }
+      editor.setDecorations(this.suppressionDecorationType, ranges);
     }
   }
 
@@ -662,6 +854,7 @@ class BlinterController {
     this.issuesByFile.clear();
     this.diagnostics.clear();
     this.refreshDecorations();
+    this.refreshSuppressionDecorations();
     this.updateWebview();
   }
 
@@ -716,15 +909,22 @@ class BlinterController {
       return;
     }
 
-    const binaryPathSetting = config.get('binaryPath') || null;
-    const useSystem = !!config.get('useSystemBlinter');
+    // Cancel any in-flight lint run
+    if (this._currentLintHandle) {
+      this._currentLintHandle.kill();
+      this._currentLintHandle = null;
+    }
 
-    const executablePath = findBlinterExecutable(this.context.extensionPath, process.platform, undefined, {
-      binaryPath: binaryPathSetting,
-      useSystemBlinter: useSystem
-    });
-    if (!executablePath) {
-      this.log('Blinter executable not found for linting. Ensure blinter.exe is in bin/ or bins/, or configure "blinter.binaryPath" or enable "blinter.useSystemBlinter".');
+    // Resolve Python interpreter
+    const pythonPath = await this._getPython();
+    if (!pythonPath) {
+      const choice = await vscode.window.showErrorMessage(
+        'Python interpreter not found. Install Python or configure "blinter.pythonPath".',
+        'Configure Python Path'
+      );
+      if (choice === 'Configure Python Path') {
+        vscode.commands.executeCommand('workbench.action.openSettings', 'blinter.pythonPath');
+      }
       return;
     }
 
@@ -736,17 +936,11 @@ class BlinterController {
     this.currentWorkspaceRoot = workspaceFolder;
     this.variableIndex = buildVariableIndexFromFile(filePath, fs);
 
-    const rulesPathSetting = config.get('rulesPath') || null;
-    const resolvedRulesPath = rulesPathSetting
-      ? this.resolveRulesPath(rulesPathSetting, workspaceFolder, filePath)
-      : null;
+    const { command, prefixArgs } = buildCommand(pythonPath, config);
+    const cliArgs = buildArgs(config, filePath);
+    const fullArgs = [...prefixArgs, ...cliArgs];
 
-    const execArgs = [filePath];
-    if (resolvedRulesPath) {
-      execArgs.push('--rules', resolvedRulesPath);
-    }
-
-    this.log(`[Linter] Running: ${executablePath} ${execArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+    this.log(`[Linter] Running: ${command} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
 
     // Clear previous diagnostics for this file
     this.diagnostics.delete(document.uri);
@@ -756,80 +950,95 @@ class BlinterController {
     }
 
     try {
-      const proc = cp.spawn(executablePath, execArgs, {
-        cwd: path.dirname(filePath),
-        windowsHide: true
-      });
-
       let stdout = '';
       let stderr = '';
 
       const encoding = config.get('encoding', 'utf8') || 'utf8';
-      if (proc.stdout && typeof proc.stdout.setEncoding === 'function') proc.stdout.setEncoding(encoding);
-      if (proc.stderr && typeof proc.stderr.setEncoding === 'function') proc.stderr.setEncoding(encoding);
-
-      proc.stdout.on('data', (data) => {
-        stdout += String(data);
+      const proc = cp.spawn(command, fullArgs, {
+        cwd: path.dirname(filePath),
+        windowsHide: true
       });
 
-      proc.stderr.on('data', (data) => {
-        stderr += String(data);
-      });
+      if (proc.stdout && typeof proc.stdout.setEncoding === 'function') {
+        try { proc.stdout.setEncoding(encoding); } catch { proc.stdout.setEncoding('utf8'); }
+      }
+      if (proc.stderr && typeof proc.stderr.setEncoding === 'function') {
+        try { proc.stderr.setEncoding(encoding); } catch { proc.stderr.setEncoding('utf8'); }
+      }
+
+      this._currentLintHandle = {
+        kill: () => { if (proc && !proc.killed) { try { proc.kill(); } catch { } } }
+      };
+
+      if (proc.stdout) proc.stdout.on('data', (data) => { stdout += String(data); });
+      if (proc.stderr) proc.stderr.on('data', (data) => { stderr += String(data); });
 
       proc.on('error', (err) => {
-        this.log(`[Linter] Process error: ${err && err.message ? err.message : String(err)}`);
+        this._currentLintHandle = null;
+        const msg = err && err.message ? err.message : String(err);
+        this.log(`[Linter] Process error: ${msg}`);
+        if (msg.includes('ENOENT') || msg.includes('not found')) {
+          vscode.window.showErrorMessage(
+            'Python not found. Install Python or configure "blinter.pythonPath".',
+            'Configure Python Path'
+          ).then((choice) => {
+            if (choice === 'Configure Python Path') {
+              vscode.commands.executeCommand('workbench.action.openSettings', 'blinter.pythonPath');
+            }
+          });
+        }
       });
 
-      await new Promise((resolve) => {
-        proc.on('close', (code) => {
-          if (stderr && stderr.trim()) {
-            this.log(`[Linter] stderr: ${stderr}`);
+      proc.on('close', () => {
+        this._currentLintHandle = null;
+
+        if (stderr && stderr.trim()) {
+          this.log(`[Linter] stderr: ${stderr}`);
+        }
+
+        const parsed = parseBlinterOutput(stdout);
+        for (const item of parsed) {
+          const lineNumber = Math.max(0, (item.line || 1) - 1);
+          const severityMap = {
+            'error': vscode.DiagnosticSeverity.Error,
+            'warning': vscode.DiagnosticSeverity.Warning,
+            'information': vscode.DiagnosticSeverity.Information,
+            'hint': vscode.DiagnosticSeverity.Hint
+          };
+          const range = new vscode.Range(
+            new vscode.Position(lineNumber, 0),
+            new vscode.Position(lineNumber, Number.MAX_SAFE_INTEGER)
+          );
+          const diag = new vscode.Diagnostic(
+            range,
+            `${item.description} (${item.code})`,
+            severityMap[item.severity] || vscode.DiagnosticSeverity.Information
+          );
+          diag.code = item.code;
+          diag.source = 'blinter';
+
+          if (!this.issuesByFile.has(filePath)) {
+            this.issuesByFile.set(filePath, []);
           }
-          
-          // Parse the complete stdout using the parser
-          const parsed = parseBlinterOutput(stdout);
-          for (const item of parsed) {
-            const lineNumber = Math.max(0, (item.line || 1) - 1);
-            const range = new vscode.Range(
-              new vscode.Position(lineNumber, 0),
-              new vscode.Position(lineNumber, Number.MAX_SAFE_INTEGER)
-            );
-            const severityMap = {
-              'error': vscode.DiagnosticSeverity.Error,
-              'warning': vscode.DiagnosticSeverity.Warning,
-              'information': vscode.DiagnosticSeverity.Information
-            };
-            const diag = new vscode.Diagnostic(
-              range,
-              `${item.description} (${item.code})`,
-              severityMap[item.severity] || vscode.DiagnosticSeverity.Information
-            );
-            diag.code = item.code;
-            diag.source = 'blinter';
-            
-            if (!this.issuesByFile.has(filePath)) {
-              this.issuesByFile.set(filePath, []);
+          this.issuesByFile.get(filePath).push({
+            id: `lint-${item.line}-${item.code}`,
+            severity: item.severity,
+            classification: 'Linter',
+            isStupid: item.severity === 'error' || item.severity === 'warning',
+            message: item.description,
+            code: item.code,
+            filePath: filePath,
+            line: item.line,
+            range: {
+              start: { line: lineNumber, character: 0 },
+              end: { line: lineNumber, character: Number.MAX_SAFE_INTEGER }
             }
-            this.issuesByFile.get(filePath).push({
-              id: `lint-${item.line}-${item.code}`,
-              severity: item.severity,
-              classification: 'Linter',
-              isStupid: item.severity === 'error' || item.severity === 'warning',
-              message: item.description,
-              code: item.code,
-              filePath: filePath,
-              line: item.line,
-              range: {
-                start: { line: lineNumber, character: 0 },
-                end: { line: lineNumber, character: Number.MAX_SAFE_INTEGER }
-              }
-            });
-          }
-          
-          this.flushDiagnostics();
-          resolve(code);
-        });
+          });
+        }
+
+        this.flushDiagnostics();
       });
+
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.log(`[Linter] Exception: ${message}`);
@@ -849,11 +1058,11 @@ class BlinterConfigurationProvider {
     ];
   }
 
-resolveDebugConfiguration(folder, config, _token) {
+  resolveDebugConfiguration(folder, config, _token) {
     if (!config || typeof config !== 'object') {
       config = {};
     }
-    
+
     if (!config.type) {
       config.type = 'blinter-debug';
     }
@@ -879,7 +1088,7 @@ resolveDebugConfiguration(folder, config, _token) {
         return undefined;
       }
     }
-    
+
     // Resolve ${file} and ${fileBasename} variables if present
     if (config.program === '${file}' || config.program === '${fileBasename}') {
       const editor = vscode.window.activeTextEditor;
@@ -890,7 +1099,7 @@ resolveDebugConfiguration(folder, config, _token) {
         return undefined;
       }
     }
-    
+
     return config;
   }
 }
@@ -925,8 +1134,8 @@ class BlinterInlineDebugAdapter {
         const fake = /** @type {any} */ (new EventEmitter());
         fake.stdout = new EventEmitter();
         fake.stderr = new EventEmitter();
-        fake.stdout.setEncoding = () => {};
-        fake.stderr.setEncoding = () => {};
+        fake.stdout.setEncoding = () => { };
+        fake.stderr.setEncoding = () => { };
         fake.kill = () => { fake.killed = true; };
         fake.killed = false;
         fake.pid = 12345;
@@ -970,9 +1179,9 @@ class BlinterOutputViewProvider {
     this._status = { state: 'idle', detail: '' };
   }
 
-		resolveWebviewView(webviewView) {
-			this._view = webviewView;
-			const webview = webviewView.webview;
+  resolveWebviewView(webviewView) {
+    this._view = webviewView;
+    const webview = webviewView.webview;
     webview.options = {
       enableScripts: true
     };
@@ -992,9 +1201,9 @@ class BlinterOutputViewProvider {
       try {
         this._view.show(true);
       } catch {
-				// ignore
-			}
-		}
+        // ignore
+      }
+    }
     vscode.commands.executeCommand('workbench.view.debug');
   }
 
@@ -1190,5 +1399,5 @@ class BlinterOutputViewProvider {
 
 function escapeMarkdown(value) {
   return String(value || '')
-    .replace(/[\\`*_{}\[\]()#+\-.!]/g, '\\$&');
+    .replace(/[\\`*_{}[\]()#+\-.!]/g, '\\$&');
 }

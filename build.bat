@@ -14,11 +14,6 @@ if defined oldBlinter (
 set /p "patch=enter the patch number: "
 
 setlocal enabledelayedexpansion
-for %%d in (bin\blinter-*.exe) do (
-    set "oldExeName=%%~nxd"
-    ren "%%d" "Blinter.exe"
-)
-
 ::dd mm yyyy 
 for /f "tokens=1-3 delims=/" %%a in ('date /t') do (
 	set dd=%%a
@@ -59,10 +54,6 @@ for /f "delims=" %%a in (package0.json) do (
 
 del package0.json
 cmd /c "npm run package:vsix"
-
-if defined oldExeName (
-	ren "bin\Blinter.exe" "!oldExeName!"
-)
 
 :: release_v1.!x!-build!y!.extension
 if exist blinter.vsix (
