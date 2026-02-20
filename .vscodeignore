@@ -19,6 +19,7 @@
 
 # Keep the prepared icons and other runtime assets
 !icons/**
+!vendor/**
 
 # Ensure the .vscodeignore itself isn't accidentally ignored by packaging tools
 !.vscodeignore

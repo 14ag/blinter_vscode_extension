@@ -20,7 +20,16 @@ Blinter integrates the Python-based Blinter linter into the IDE's **Run & Debug*
   ```
   Alternatively, point `blinter.blinterModule` to `"script"` and configure `blinter.blinterScriptPath` to use a local `blinter.py` directly.
 - See the Blinter project for more details: [https://github.com/tboy1337/Blinter](https://github.com/tboy1337/Blinter) (v1.0.112+)
-- Visual Studio Code 1.90.0 or higher.
+
+## Developer Setup (Cloning)
+
+If you are cloning this repository for development, you must pull the core Blinter linter sources into the `vendor/` folder (which is ignored by Git to keep the repository size manageable).
+
+1. Execute the `setup-vendor.bat` script located at the repository root.
+2. This script downloads and extracts the validated version of the core linter into `vendor/Blinter`.
+
+> [!NOTE]
+> The extension package (`.vsix`) automatically includes these sources, so regular users do not need to perform this setup.
 
 ## Quick start
 1. Install Python 3.10+ and run `pip install Blinter`.

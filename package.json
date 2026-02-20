@@ -55,7 +55,8 @@
     "package.json",
     "README.md",
     "LICENSE",
-    "jsconfig.json"
+    "jsconfig.json",
+    "vendor/**"
   ],
   "contributes": {
     "languages": [
