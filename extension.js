@@ -9,6 +9,11 @@ const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 
 function activate(context) {
+  if (process.platform !== 'win32') {
+    vscode.window.showErrorMessage('Blinter only supports Windows OS. Extension will not be activated.');
+    return;
+  }
+
   // Register debug configuration provider
   context.subscriptions.push(
     vscode.debug.registerDebugConfigurationProvider('blinter-debug', {

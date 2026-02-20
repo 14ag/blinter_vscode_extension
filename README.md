@@ -13,6 +13,7 @@ Blinter integrates the Python-based Blinter linter into the IDE's **Run & Debug*
 
 ## Requirements (Prerequisites)
 
+- **Windows OS** (required). Blinter specifically targets Windows batch scripting.
 - **Python 3.10+** installed and accessible on the system PATH, or configured via `blinter.pythonPath`.
 - **Blinter** installed via pip:
   ```
@@ -26,7 +27,7 @@ Blinter integrates the Python-based Blinter linter into the IDE's **Run & Debug*
 If you are cloning this repository for development, you must pull the core Blinter linter sources into the `vendor/` folder (which is ignored by Git to keep the repository size manageable).
 
 1. Execute the `setup-vendor.bat` script located at the repository root.
-2. This script downloads and extracts the validated version of the core linter into `vendor/Blinter`.
+2. This script downloads and extracts the validated version of the core linter (**v1.0.112 @ 3564f35**) into `vendor/Blinter`.
 
 > [!NOTE]
 > The extension package (`.vsix`) automatically includes these sources, so regular users do not need to perform this setup.

@@ -3,18 +3,19 @@ setlocal
 
 :: Configuration
 set BLINTER_VERSION=1.0.112
+set BLINTER_COMMIT=3564f35
 set VENDOR_DIR=%~dp0vendor\Blinter
-set ZIP_FILE=%TEMP%\Blinter-%BLINTER_VERSION%-src.zip
+set ZIP_FILE=%TEMP%\Blinter-%BLINTER_VERSION%-%BLINTER_COMMIT%-src.zip
 set EXTRACT_DIR=%TEMP%\Blinter-src-extract
 
-echo [Blinter] Setting up vendor sources (v%BLINTER_VERSION%)...
+echo [Blinter] Setting up vendor sources (v%BLINTER_VERSION% @ %BLINTER_COMMIT%)...
 
 :: Create vendor directory if it doesn't exist
 if not exist "%VENDOR_DIR%" mkdir "%VENDOR_DIR%"
 
 :: Download source from GitHub
 echo [Blinter] Downloading source zipball...
-powershell -Command "Invoke-WebRequest -Uri 'https://api.github.com/repos/tboy1337/Blinter/zipball/v%BLINTER_VERSION%' -OutFile '%ZIP_FILE%' -UseBasicParsing"
+powershell -Command "Invoke-WebRequest -Uri 'https://api.github.com/repos/tboy1337/Blinter/zipball/%BLINTER_COMMIT%' -OutFile '%ZIP_FILE%' -UseBasicParsing"
 
 if %ERRORLEVEL% neq 0 (
     echo [Error] Failed to download Blinter source.

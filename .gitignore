@@ -13,6 +13,5 @@ release_notes.md
 !progress.txt
 !project.txt
 !todo.txt
-!vendor/Blinter/version.txt
+!vendor/version.txt
 @ts-nocheck
-vendor/Blinter
