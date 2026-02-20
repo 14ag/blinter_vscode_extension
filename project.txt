@@ -97,7 +97,7 @@ The Blinter core engine is at: [https://github.com/tboy1337/Blinter](https://git
 
   * File paths, line numbers, severity, and message.
   * Variable definitions, modifications, and usage traces.
-  * “Stupid lines” (anti-patterns like undefined variables, empty labels, unreachable code).
+  * “Critical issues” (anti-patterns like undefined variables, empty labels, unreachable code).
 * Store parsed issues in an internal map (`issuesStore`).
 * Convert these to:
 

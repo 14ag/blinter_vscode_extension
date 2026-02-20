@@ -12,7 +12,7 @@ last_updated: 2025-11-02T12:30:00Z
 
 current_state:
 - VS Code extension exposes a debug type (`blinter`) backed by an inline debug adapter wrapping `lib/debugAdapterCore.js` and the bundled Blinter executable.
-- Streaming analysis lives in `lib/analysis.js`, producing diagnostics, hover content, and configurable "stupid" line decorations while feeding the Blinter Output webview.
+- Streaming analysis lives in `lib/analysis.js`, producing diagnostics, hover content, and configurable critical issue decorations while feeding the Blinter Output webview.
 - Unit suite now covers parser, discovery, analyzer, and inline debug adapter behaviour (`npm run test:unit`).
 - Documentation (`README.md`, `PACKAGING.md`, `project.txt`) reflects the Run & Debug workflow with a launch.json example.
 - ESLint ignore patterns migrated into `eslint.config.mjs`; legacy `.eslintignore` removed to silence warnings.

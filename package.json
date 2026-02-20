@@ -1,6 +1,6 @@
 {
   "name": "blinter",
-  "version": "1.12.25103",
+  "version": "1.26.15623",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
   "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes (Core v1.0.112 @ 3564f35). Only supports Windows OS.",
@@ -85,7 +85,7 @@
         "type": "blinter-debug",
         "label": "Blinter batch Debugger",
         "configurationAttributes": {
-          "blinter-debug": {
+          "launch": {
             "properties": {
               "request": {
                 "type": "string",
@@ -180,36 +180,17 @@
             "CMD_CASE",
             "CASE001"
           ],
-          "description": "List of Blinter diagnostic codes for which quick fixes (command-casing) are offered."
+          "description": "Diagnostic codes that should offer command-normalized quick fixes."
         },
-        "blinter.stupidHighlightColor": {
+        "blinter.criticalHighlightColor": {
           "type": "string",
           "default": "#5a1124",
-          "description": "Hex color to use when highlighting problematic 'stupid' lines during debugging."
+          "description": "Hex color for critical issue highlights (background color). Used during debug sessions."
         },
         "blinter.encoding": {
           "type": "string",
           "default": "utf8",
           "description": "Encoding to use when reading Blinter CLI output (e.g., utf8, utf16le)."
-        },
-        "blinter.pythonPath": {
-          "type": "string",
-          "default": "",
-          "description": "Path to the Python interpreter used to run Blinter. Leave empty to auto-detect (tries python, python3, py)."
-        },
-        "blinter.blinterModule": {
-          "type": "string",
-          "enum": [
-            "module",
-            "script"
-          ],
-          "default": "module",
-          "description": "How to invoke Blinter. 'module' runs 'python -m blinter' (pip-installed). 'script' runs a local blinter.py file directly."
-        },
-        "blinter.blinterScriptPath": {
-          "type": "string",
-          "default": "",
-          "description": "Absolute path to blinter.py when blinter.blinterModule is set to 'script'."
         },
         "blinter.followCalls": {
           "type": "boolean",

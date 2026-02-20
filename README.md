@@ -1,10 +1,10 @@
 # Blinter — the IDE Batch Linter
 
-Blinter integrates the Python-based Blinter linter into the IDE's **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get diagnostics, suppression comments, and actionable quick fixes as you work.
+Blinter integrates the vendored Blinter linter EXE into the IDE's **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get diagnostics, suppression comments, and actionable quick fixes as you work.
 
 ## What it does
-- Registers a `blinter-debug` debug type that invokes Blinter via Python and streams its output into the IDE.
-- Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline "stupid line" decorations in sync.
+- Registers a `blinter-debug` debug type that invokes the vendored `Blinter.exe` and streams its output into the IDE.
+- Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline critical issue decorations in sync.
 - Exposes a **Blinter Output** view in the Run & Debug sidebar that groups diagnostics and lets you jump straight to problem lines.
 - Provides command-casing quick fixes (configurable) and detailed variable traces for undefined-variable diagnostics.
 - Offers **suppress on this line / suppress next occurrence** quick fixes that insert `LINT:IGNORE` comments.
@@ -14,13 +14,8 @@ Blinter integrates the Python-based Blinter linter into the IDE's **Run & Debug*
 ## Requirements (Prerequisites)
 
 - **Windows OS** (required). Blinter specifically targets Windows batch scripting.
-- **Python 3.10+** installed and accessible on the system PATH, or configured via `blinter.pythonPath`.
-- **Blinter** installed via pip:
-  ```
-  pip install Blinter
-  ```
-  Alternatively, point `blinter.blinterModule` to `"script"` and configure `blinter.blinterScriptPath` to use a local `blinter.py` directly.
-- See the Blinter project for more details: [https://github.com/tboy1337/Blinter](https://github.com/tboy1337/Blinter) (v1.0.112+)
+- **No Python Required**. The extension bundles the core linter as a standalone executable.
+- See the Blinter project for more details: [https://github.com/tboy1337/Blinter](https://github.com/tboy1337/Blinter) (Core v1.0.112 @ 3564f35)
 
 ## Developer Setup (Cloning)
 
@@ -33,9 +28,8 @@ If you are cloning this repository for development, you must pull the core Blint
 > The extension package (`.vsix`) automatically includes these sources, so regular users do not need to perform this setup.
 
 ## Quick start
-1. Install Python 3.10+ and run `pip install Blinter`.
-2. Open a workspace that contains the batch file you want to lint.
-3. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow the IDE to create a `launch.json` using the snippet below.
+1. Open a workspace that contains the batch file you want to lint.
+2. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow the IDE to create a `launch.json` using the snippet below.
 4. Press **Run** (F5). Blinter runs immediately, populating the Problems panel, in-editor highlights, and the Blinter Output view.
 
 Example `launch.json` entry:
@@ -56,10 +50,6 @@ Example `launch.json` entry:
 
 ## Settings
 
-### Python interpreter
-- **`blinter.pythonPath`** (string) — Path to the Python interpreter. Leave empty to auto-detect (`python`, `python3`, `py`).
-- **`blinter.blinterModule`** (`"module"` | `"script"`) — How to invoke Blinter. `"module"` runs `python -m blinter` (pip-installed). `"script"` runs a local `blinter.py` file.
-- **`blinter.blinterScriptPath`** (string) — Absolute path to `blinter.py` when `blinterModule` is `"script"`.
 
 ### Linting behaviour
 - **`blinter.enabled`** (boolean) — Enable/disable Blinter (`true`).
@@ -75,7 +65,7 @@ Example `launch.json` entry:
 
 ### Presentation
 - **`blinter.quickFixCodes`** (string[]) — Diagnostic codes that offer command-casing quick fixes.
-- **`blinter.stupidHighlightColor`** (string) — Hex colour for "stupid line" highlights during debug sessions (`#5a1124`).
+- **`blinter.criticalHighlightColor`** (string) — Hex colour for critical issue highlights during debug sessions (`#5a1124`).
 - **`blinter.encoding`** (string) — Encoding for Blinter output (`utf8`).
 
 ### Suppression comments
@@ -92,13 +82,12 @@ Both actions merge codes if a suppression comment already exists on the target. 
 
 ## Blinter: Create Config File command
 
-Run **Blinter: Create Config File** from the Command Palette to generate a `blinter.ini` in the workspace root using `python -m blinter --create-config`. The file is opened automatically after creation.
+Run **Blinter: Create Config File** from the Command Palette to generate a `blinter.ini` in the workspace root using the vendored linter. The file is opened automatically after creation.
 
 The status bar shows `$(gear) blinter.ini` when a config file exists (click to open it), or `$(circle-slash) No blinter.ini` when it doesn't (click to create one). The indicator is only visible when a `.bat` or `.cmd` file is active.
 
 ## Output & troubleshooting
 - **View → Output → Blinter** shows the exact command invocation, stdout, and stderr.
-- If Python is not found, you'll see an actionable notification with a **Configure Python Path** button that opens the `blinter.pythonPath` setting.
 - Diagnostics clear automatically when a session ends; start a new Run & Debug session to refresh analysis.
 
 ## Packaging & publishing

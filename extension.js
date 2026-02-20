@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const cp = require('child_process');
 
-const { detectPython, buildArgs, buildCommand } = require('./lib/blinterRunner');
+const { getExePath, buildArgs, spawnBlinter } = require('./lib/blinterRunner');
 const { analyzeLine, buildVariableIndexFromFile } = require('./lib/analysis');
 const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
@@ -40,8 +40,13 @@ function activate(context) {
 
         // If no launch.json exists and user clicked "Run and Debug"
         if (!config.type && !config.request && !config.name) {
-          const editor = vscode.window.activeTextEditor;
-          if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+          let editor = vscode.window.activeTextEditor;
+          // Robust check for batch file in active or visible editors
+          if (!editor || (editor.document.languageId !== 'bat' && editor.document.languageId !== 'cmd')) {
+            editor = vscode.window.visibleTextEditors.find(e => e.document.languageId === 'bat' || e.document.languageId === 'cmd');
+          }
+
+          if (editor) {
             config.type = 'blinter-debug';
             config.name = 'Launch Batch (Blinter)';
             config.request = 'launch';
@@ -57,13 +62,19 @@ function activate(context) {
           config.type = 'blinter-debug';
         }
 
-        // Resolve ${file} variable if needed
+        // Resolve ${file} and ${fileBasename} variables if present
         if (config.program === '${file}' || config.program === '${fileBasename}') {
-          const editor = vscode.window.activeTextEditor;
+          let editor = vscode.window.activeTextEditor;
+
+          // If active editor is not a batch file, check visible editors
+          if (!editor || (editor.document.languageId !== 'bat' && editor.document.languageId !== 'cmd')) {
+            editor = vscode.window.visibleTextEditors.find(e => e.document.languageId === 'bat' || e.document.languageId === 'cmd');
+          }
+
           if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
             config.program = editor.document.uri.fsPath;
           } else {
-            vscode.window.showWarningMessage('${file} variable requires an active batch file. Open a .bat or .cmd file first.');
+            vscode.window.showErrorMessage('No active batch file found. Open a .bat or .cmd file first to use ${file}.');
             return undefined;
           }
         }
@@ -118,21 +129,8 @@ function activate(context) {
       }
     }
 
-    const config = vscode.workspace.getConfiguration('blinter');
-    const pythonPath = await detectPython(config.get('pythonPath', ''));
-    if (!pythonPath) {
-      const choice = await vscode.window.showErrorMessage(
-        'Python interpreter not found. Install Python or configure "blinter.pythonPath".',
-        'Configure Python Path'
-      );
-      if (choice === 'Configure Python Path') {
-        vscode.commands.executeCommand('workbench.action.openSettings', 'blinter.pythonPath');
-      }
-      return;
-    }
-
-    const { command, prefixArgs } = buildCommand(pythonPath, config);
-    const proc = cp.spawn(command, [...prefixArgs, '--create-config'], {
+    const exePath = getExePath(context.extensionUri);
+    const proc = cp.spawn(exePath, ['--create-config'], {
       cwd: workspaceRoot,
       windowsHide: true
     });
@@ -182,8 +180,6 @@ class BlinterController {
 
     // Current lint run cancellation handle
     this._currentLintHandle = null;
-    // Cached Python path (resolved once per session)
-    this._resolvedPython = null;
 
     this.decorationType = this.createDecorationType();
 
@@ -244,12 +240,8 @@ class BlinterController {
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('blinter.stupidHighlightColor')) {
+        if (event.affectsConfiguration('blinter.criticalHighlightColor')) {
           this.resetDecorationStyle();
-        }
-        // Reset cached Python when path setting changes
-        if (event.affectsConfiguration('blinter.pythonPath')) {
-          this._resolvedPython = null;
         }
       })
     );
@@ -510,7 +502,7 @@ class BlinterController {
   }
 
   getHighlightColor() {
-    const colorFromConfig = vscode.workspace.getConfiguration('blinter').get('stupidHighlightColor', '#5a1124');
+    const colorFromConfig = vscode.workspace.getConfiguration('blinter').get('criticalHighlightColor', '#5a1124');
     if (typeof colorFromConfig === 'string') {
       const trimmed = colorFromConfig.trim();
       const hexMatch = trimmed.match(/^#?([0-9A-Fa-f]{6})$/);
@@ -569,16 +561,10 @@ class BlinterController {
       workspaceFolder = path.dirname(programPath);
     }
 
-    // Resolve Python interpreter
-    const pythonPath = await this._getPython();
-    if (!pythonPath) {
-      throw new Error('Python interpreter not found. Install Python or configure "blinter.pythonPath".');
-    }
-
-    const { command, prefixArgs } = buildCommand(pythonPath, config);
+    const exePath = getExePath(this.context.extensionUri);
     const cliArgs = buildArgs(config, programPath);
     const userArgs = Array.isArray(args.args) ? args.args.filter((value) => typeof value === 'string' && value.trim().length > 0) : [];
-    const fullArgs = [...prefixArgs, ...cliArgs, ...userArgs];
+    const fullArgs = [...cliArgs, ...userArgs];
 
     this.currentProgramPath = programPath;
     this.currentWorkspaceRoot = workspaceFolder || path.dirname(programPath);
@@ -587,27 +573,15 @@ class BlinterController {
     this.webviewProvider?.ensureVisible();
     this.updateWebview();
 
-    this.log(`Launching Blinter: ${command} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+    this.log(`Launching Blinter: ${exePath} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
 
     return {
-      executable: command,
+      executable: exePath,
       args: fullArgs,
       cwd: path.dirname(programPath)
     };
   }
 
-  /** Resolve (and cache) the Python interpreter path */
-  async _getPython() {
-    if (this._resolvedPython) {
-      return this._resolvedPython;
-    }
-    const config = vscode.workspace.getConfiguration('blinter');
-    const pythonPath = await detectPython(config.get('pythonPath', ''));
-    if (pythonPath) {
-      this._resolvedPython = pythonPath;
-    }
-    return pythonPath;
-  }
 
   resolveProgramPath(program, workspaceFolder) {
     if (path.isAbsolute(program)) {
@@ -725,10 +699,10 @@ class BlinterController {
     const editors = vscode.window.visibleTextEditors;
     for (const editor of editors) {
       const issues = this.issuesByFile.get(editor.document.uri.fsPath) || [];
-      const stupidRanges = [];
+      const criticalRanges = [];
 
       for (const issue of issues) {
-        if (!issue.isStupid) {
+        if (!issue.isCritical) {
           continue;
         }
         const lineIndex = Math.max(0, (issue.line || 1) - 1);
@@ -736,10 +710,10 @@ class BlinterController {
           continue;
         }
         const lineRange = editor.document.lineAt(lineIndex).range;
-        stupidRanges.push(lineRange);
+        criticalRanges.push(lineRange);
       }
 
-      editor.setDecorations(this.decorationType, stupidRanges);
+      editor.setDecorations(this.decorationType, criticalRanges);
     }
   }
 
@@ -791,7 +765,7 @@ class BlinterController {
       { id: 'warnings', label: 'Warnings', filter: (issue) => issue.severity === 'warning' },
       { id: 'info', label: 'Info', filter: (issue) => issue.severity === 'info' },
       { id: 'undefined', label: 'Undefined Variables', filter: (issue) => issue.classification === 'UndefinedVariable' },
-      { id: 'stupid', label: 'Stupid Lines', filter: (issue) => issue.isStupid }
+      { id: 'critical', label: 'Critical Issues', filter: (issue) => issue.isCritical }
     ];
 
     const groups = definitions.map((definition) => ({
@@ -920,18 +894,7 @@ class BlinterController {
       this._currentLintHandle = null;
     }
 
-    // Resolve Python interpreter
-    const pythonPath = await this._getPython();
-    if (!pythonPath) {
-      const choice = await vscode.window.showErrorMessage(
-        'Python interpreter not found. Install Python or configure "blinter.pythonPath".',
-        'Configure Python Path'
-      );
-      if (choice === 'Configure Python Path') {
-        vscode.commands.executeCommand('workbench.action.openSettings', 'blinter.pythonPath');
-      }
-      return;
-    }
+    const exePath = getExePath(this.context.extensionUri);
 
     const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
       ? vscode.workspace.workspaceFolders[0].uri.fsPath
@@ -941,11 +904,10 @@ class BlinterController {
     this.currentWorkspaceRoot = workspaceFolder;
     this.variableIndex = buildVariableIndexFromFile(filePath, fs);
 
-    const { command, prefixArgs } = buildCommand(pythonPath, config);
     const cliArgs = buildArgs(config, filePath);
-    const fullArgs = [...prefixArgs, ...cliArgs];
+    const fullArgs = [...cliArgs];
 
-    this.log(`[Linter] Running: ${command} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+    this.log(`[Linter] Running: ${exePath} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
 
     // Clear previous diagnostics for this file
     this.diagnostics.delete(document.uri);
@@ -959,7 +921,7 @@ class BlinterController {
       let stderr = '';
 
       const encoding = config.get('encoding', 'utf8') || 'utf8';
-      const proc = cp.spawn(command, fullArgs, {
+      const proc = cp.spawn(exePath, fullArgs, {
         cwd: path.dirname(filePath),
         windowsHide: true
       });
@@ -982,16 +944,7 @@ class BlinterController {
         this._currentLintHandle = null;
         const msg = err && err.message ? err.message : String(err);
         this.log(`[Linter] Process error: ${msg}`);
-        if (msg.includes('ENOENT') || msg.includes('not found')) {
-          vscode.window.showErrorMessage(
-            'Python not found. Install Python or configure "blinter.pythonPath".',
-            'Configure Python Path'
-          ).then((choice) => {
-            if (choice === 'Configure Python Path') {
-              vscode.commands.executeCommand('workbench.action.openSettings', 'blinter.pythonPath');
-            }
-          });
-        }
+        vscode.window.showErrorMessage(`Failed to run Blinter: ${msg}`);
       });
 
       proc.on('close', () => {
@@ -1029,7 +982,7 @@ class BlinterController {
             id: `lint-${item.line}-${item.code}`,
             severity: item.severity,
             classification: 'Linter',
-            isStupid: item.severity === 'error' || item.severity === 'warning',
+            isCritical: item.severity === 'error' || item.severity === 'warning',
             message: item.description,
             code: item.code,
             filePath: filePath,
@@ -1046,66 +999,7 @@ class BlinterController {
 
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.log(`[Linter] Exception: ${message}`);
     }
-  }
-}
-
-class BlinterConfigurationProvider {
-  provideDebugConfigurations(_folder, _token) {
-    return [
-      {
-        name: 'Launch Batch (Blinter)',
-        type: 'blinter-debug',
-        request: 'launch',
-        program: '${file}'
-      }
-    ];
-  }
-
-  resolveDebugConfiguration(folder, config, _token) {
-    if (!config || typeof config !== 'object') {
-      config = {};
-    }
-
-    if (!config.type) {
-      config.type = 'blinter-debug';
-    }
-    if (!config.request) {
-      config.request = 'launch';
-    }
-    if (!config.program) {
-      const editor = vscode.window.activeTextEditor;
-      if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
-        config.program = editor.document.uri.fsPath;
-      } else if (editor) {
-        // User has a file open but it's not a batch file
-        vscode.window.showWarningMessage('Blinter debugger requires a .bat or .cmd file. Open a batch file first.');
-        return undefined;
-      } else {
-        // No active editor - try to use folder if available
-        if (folder && folder.uri) {
-          // Could search for .bat/.cmd files, but for now just show an error
-          vscode.window.showErrorMessage('No batch file is open. Open a .bat or .cmd file, or set "program" in launch.json.');
-          return undefined;
-        }
-        // Single-file mode - can't determine program
-        return undefined;
-      }
-    }
-
-    // Resolve ${file} and ${fileBasename} variables if present
-    if (config.program === '${file}' || config.program === '${fileBasename}') {
-      const editor = vscode.window.activeTextEditor;
-      if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
-        config.program = editor.document.uri.fsPath;
-      } else {
-        vscode.window.showWarningMessage('${file} variable requires an active batch file. Open a .bat or .cmd file first.');
-        return undefined;
-      }
-    }
-
-    return config;
   }
 }
 

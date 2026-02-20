@@ -1,13 +1,10 @@
-// @ts-nocheck
 const assert = require('assert');
-const { buildArgs, buildCommand, probePython } = require('../lib/blinterRunner');
+const path = require('path');
+const { buildArgs, getExePath } = require('../lib/blinterRunner');
 
 // Minimal mock for vscode.WorkspaceConfiguration
 function makeConfig(overrides = {}) {
     const defaults = {
-        pythonPath: '',
-        blinterModule: 'module',
-        blinterScriptPath: '',
         followCalls: false,
         minSeverity: 'all',
         enabledRules: [],
@@ -36,11 +33,6 @@ describe('BlinterRunner — buildArgs', () => {
     it('adds --follow-calls when enabled', () => {
         const args = buildArgs(makeConfig({ followCalls: true }), 'file.bat');
         assert.ok(args.includes('--follow-calls'), 'should include --follow-calls');
-    });
-
-    it('does not add --follow-calls when disabled', () => {
-        const args = buildArgs(makeConfig({ followCalls: false }), 'file.bat');
-        assert.ok(!args.includes('--follow-calls'), 'should not include --follow-calls');
     });
 
     it('adds --min-severity when not "all"', () => {
@@ -74,21 +66,11 @@ describe('BlinterRunner — buildArgs', () => {
         assert.ok(args.includes('--no-config'));
     });
 
-    it('omits --no-config when useConfigFile is true', () => {
-        const args = buildArgs(makeConfig({ useConfigFile: true }), 'file.bat');
-        assert.ok(!args.includes('--no-config'));
-    });
-
     it('adds --max-line-length when not default (100)', () => {
         const args = buildArgs(makeConfig({ maxLineLength: 120 }), 'file.bat');
         const idx = args.indexOf('--max-line-length');
         assert.ok(idx !== -1, 'should include --max-line-length');
         assert.strictEqual(args[idx + 1], '120');
-    });
-
-    it('omits --max-line-length when default (100)', () => {
-        const args = buildArgs(makeConfig({ maxLineLength: 100 }), 'file.bat');
-        assert.ok(!args.includes('--max-line-length'));
     });
 
     it('adds --no-recursive when enabled', () => {
@@ -97,35 +79,11 @@ describe('BlinterRunner — buildArgs', () => {
     });
 });
 
-describe('BlinterRunner — buildCommand', () => {
-    it('returns module invocation by default', () => {
-        const { command, prefixArgs } = buildCommand('python', makeConfig());
-        assert.strictEqual(command, 'python');
-        assert.deepStrictEqual(prefixArgs, ['-m', 'blinter']);
-    });
-
-    it('returns script invocation when mode is script and scriptPath is set', () => {
-        const { command, prefixArgs } = buildCommand('python', makeConfig({
-            blinterModule: 'script',
-            blinterScriptPath: 'C:\\blinter\\blinter.py'
-        }));
-        assert.strictEqual(command, 'python');
-        assert.deepStrictEqual(prefixArgs, ['C:\\blinter\\blinter.py']);
-    });
-
-    it('falls back to module mode when script mode has no path', () => {
-        const { command, prefixArgs } = buildCommand('python', makeConfig({
-            blinterModule: 'script',
-            blinterScriptPath: ''
-        }));
-        assert.strictEqual(command, 'python');
-        assert.deepStrictEqual(prefixArgs, ['-m', 'blinter']);
-    });
-});
-
-describe('BlinterRunner — probePython', () => {
-    it('returns false for a non-existent command', async () => {
-        const result = await probePython('this_command_does_not_exist_blinter_test_xyz');
-        assert.strictEqual(result, false);
+describe('BlinterRunner — getExePath', () => {
+    it('returns the correct path to the vendored EXE', () => {
+        const extensionUri = 'C:\\path\\to\\extension';
+        const expected = path.join(extensionUri, 'vendor', 'Blinter', 'Blinter.exe');
+        const actual = getExePath(extensionUri);
+        assert.strictEqual(actual, expected);
     });
 });

@@ -6,7 +6,7 @@ const os = require('os');
 const { analyzeLine, buildVariableIndexFromFile } = require('../lib/analysis');
 
 describe('Analysis pipeline', () => {
-  it('classifies bracketed output and flags stupid lines', () => {
+  it('classifies bracketed output and flags critical issues', () => {
     const defaultFile = path.join(__dirname, 'fixtures', 'variable-sample.bat');
     const issues = analyzeLine('[WARN] (BL001) -> unreachable code detected on line 10', {
       workspaceRoot: null,
@@ -18,7 +18,7 @@ describe('Analysis pipeline', () => {
     const issue = issues[0];
     assert.strictEqual(issue.severity, 'warning');
     assert.strictEqual(issue.classification, 'Heuristic');
-    assert.strictEqual(issue.isStupid, true);
+    assert.strictEqual(issue.isCritical, true);
     assert.strictEqual(issue.line, 10);
   });
 

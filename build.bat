@@ -10,19 +10,26 @@ if defined oldBlinter (
 ) else (
 	echo No .vsix file found to move.
 )
-
-set /p "patch=enter the patch number: "
+set "patch=0"
+set /p "patch=enter the patch number (0-9): "
 
 setlocal enabledelayedexpansion
 ::dd mm yyyy 
 for /f "tokens=1-3 delims=/" %%a in ('date /t') do (
 	set dd=%%a
 	if "!dd:~0,1!"=="0" set dd=!dd:0=!
+	set /a "dd=(!dd!*100)/32"
+	if !dd! lss 10 set "dd=0!dd!"
+
 	set mm=%%b
-	if "!mm:~0,1!"=="0" set mm=!mm:0=!
+	if "!mm:~0,1!"=="0" set "mm=!mm:0=!"
+	set /a "mm=(!mm!*100)/13"
+	if !mm! lss 10 set "mm=0!mm!"
+
 	set "yy=%%c"
 	set "yy=!yy:~2,2!"
-	set "x=!mm!.!yy!!dd!%patch%"
+
+	set "x=!yy!.!mm!!dd!%patch%"
 	)
 :: hh mm ss
 echo _!x!_
