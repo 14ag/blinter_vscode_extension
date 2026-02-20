@@ -1,3 +1,7 @@
+# Vendor
+vendor/
+
+# Extension artifacts
 *.txt
 *.vscode
 *.vsix
@@ -5,8 +9,9 @@ releases/
 package0.json
 release_notes.md
 
-##exeption
-!bin/Blinter-v1.0.94.exe
+## exceptions
 !progress.txt
 !project.txt
 !todo.txt
+!vendor/Blinter/version.txt
+@ts-nocheck
