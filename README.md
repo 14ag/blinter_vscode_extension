@@ -7,7 +7,7 @@ Blinter integrates the vendored Blinter linter EXE into the IDE's **Run & Debug*
 - Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline critical issue decorations in sync.
 - Exposes a **Blinter Output** view in the Run & Debug sidebar that groups diagnostics and lets you jump straight to problem lines.
 - Provides command-casing quick fixes (configurable) and detailed variable traces for undefined-variable diagnostics.
-- Offers **suppress on this line / suppress next occurrence** quick fixes that insert `LINT:IGNORE` comments.
+- Offers **suppress on this line** quick fixes that insert `LINT:IGNORE` comments.
 - Shows a status bar indicator for `blinter.ini` in the workspace.
 - Provides a **Blinter: Create Config File** command to bootstrap a `blinter.ini` in your workspace.
 
@@ -75,10 +75,10 @@ Example `launch.json` entry:
 
 When a Blinter diagnostic appears on a line, the **Quick Fix** (`Ctrl+.`) menu shows:
 
-- **Blinter: Suppress [CODE] on this line** — appends `REM LINT:IGNORE-LINE [CODE]` to the flagged line (or inserts a new comment line above if the line ends with `^`).
-- **Blinter: Suppress [CODE] on next occurrence** — inserts `REM LINT:IGNORE [CODE]` on a new line immediately above the flagged line.
+- **Blinter: Suppress [CODE] on this line** - inserts `REM LINT:IGNORE [CODE]` on a dedicated line above the flagged line.
+- Optional: **Blinter: Ask Copilot about [CODE]** - enable `blinter.showAskCopilotQuickFix` to add this action.
 
-Both actions merge codes if a suppression comment already exists on the target. Multiple codes are joined with `, `.
+Suppression merges codes if a `LINT:IGNORE` comment already exists directly above the target line. Multiple codes are joined with `, `.
 
 ## Blinter: Create Config File command
 

@@ -1,6 +1,6 @@
 {
   "name": "blinter",
-  "version": "1.26.15625",
+  "version": "1.26.15653",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
   "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes (Core v1.0.112 @ 3564f35). Only supports Windows OS.",
@@ -46,6 +46,7 @@
   "activationEvents": [
     "onDebugInitialConfigurations",
     "onDebugResolve:blinter-debug",
+    "onView:blinter.outputSummary",
     "onLanguage:bat",
     "onLanguage:cmd",
     "onDebug:blinter-debug"
@@ -128,6 +129,7 @@
     "views": {
       "debug": [
         {
+          "type": "webview",
           "id": "blinter.outputSummary",
           "name": "Blinter Output",
           "icon": "icons/blinter-logo.png"
@@ -150,8 +152,25 @@
       {
         "command": "blinter.askCopilot",
         "title": "Blinter: Ask Copilot About Diagnostic"
+      },
+      {
+        "command": "blinter.removeAllSuppressions",
+        "title": "Blinter: Remove All Suppressions",
+        "icon": {
+          "light": "icons/remove-suppressions-light.svg",
+          "dark": "icons/remove-suppressions-dark.svg"
+        }
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "blinter.removeAllSuppressions",
+          "when": "view == blinter.outputSummary",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Blinter",
       "properties": {
@@ -252,6 +271,11 @@
           ],
           "default": "REM",
           "description": "Comment style used when inserting LINT:IGNORE suppression comments."
+        },
+        "blinter.showAskCopilotQuickFix": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show 'Ask Copilot' in Blinter quick fixes. Keep disabled to avoid duplicate Copilot Fix/Explain actions."
         }
       }
     }

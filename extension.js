@@ -26,18 +26,6 @@ function activate(context) {
   context.subscriptions.push(
     vscode.debug.registerDebugConfigurationProvider('blinter-debug', {
       /**
-       * Provide debug configurations when user has no launch.json
-       */
-      provideDebugConfigurations(_workspaceFolder) {
-        return [{
-          type: 'blinter-debug',
-          name: 'Launch Batch (Blinter)',
-          request: 'launch',
-          program: '${file}'
-        }];
-      },
-
-      /**
        * Resolve configuration before debugging starts
        */
       resolveDebugConfiguration(_workspaceFolder, config, _token) {
@@ -173,6 +161,19 @@ function activate(context) {
       vscode.window.showErrorMessage('Unable to open Copilot Chat for this diagnostic.');
     }
   }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.removeAllSuppressions', async () => {
+    try {
+      await controller.removeAllSuppressionComments();
+    } catch (err) {
+      controller.log(`[Suppressions] Error: ${err && err.message ? err.message : String(err)}`);
+      vscode.window.showErrorMessage('Failed to remove suppression comments. Check the Blinter Output channel for details.');
+    }
+  }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.test.getOutputViewState', () => {
+    return controller.getOutputViewStateForTest();
+  }));
 }
 
 function deactivate() { }
@@ -194,6 +195,7 @@ class BlinterController {
     this.currentSessionId = undefined;
     this.pendingUpdateTimer = undefined;
     this.status = { state: 'idle', detail: '' };
+    this._hasAutoShownOutputView = false;
 
     // Current lint run cancellation handle
     this._currentLintHandle = null;
@@ -317,7 +319,10 @@ class BlinterController {
     this._updateConfigStatusBar();
 
     context.subscriptions.push(
-      vscode.window.onDidChangeActiveTextEditor(() => this._updateConfigStatusBar())
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this._updateConfigStatusBar();
+        this.maybeEnsureOutputViewVisible(editor);
+      })
     );
     context.subscriptions.push(
       vscode.workspace.onDidCreateFiles(() => this._updateConfigStatusBar())
@@ -329,6 +334,22 @@ class BlinterController {
     this.updateStatus('idle');
     this.updateWebview();
     this.refreshDecorations();
+    this.maybeEnsureOutputViewVisible(vscode.window.activeTextEditor);
+  }
+
+  maybeEnsureOutputViewVisible(editor) {
+    if (this._hasAutoShownOutputView) {
+      return;
+    }
+    if (!editor || !editor.document) {
+      return;
+    }
+    const lang = editor.document.languageId;
+    if (lang !== 'bat' && lang !== 'cmd') {
+      return;
+    }
+    this._hasAutoShownOutputView = true;
+    this.webviewProvider?.ensureVisible();
   }
 
   /** Task 9: Update the blinter.ini status bar indicator */
@@ -421,6 +442,7 @@ class BlinterController {
 
         const config = vscode.workspace.getConfiguration('blinter');
         const commentStyle = config.get('suppressionCommentStyle', 'REM') || 'REM';
+        const showAskCopilotQuickFix = config.get('showAskCopilotQuickFix', false);
         const actions = [];
 
         // Collect unique codes on this line
@@ -465,8 +487,8 @@ class BlinterController {
           }
         }
 
-        // Action 2: Ask Copilot for help with this diagnostic.
-        {
+        if (showAskCopilotQuickFix) {
+          // Optional action: Ask Copilot for help with this diagnostic.
           const label = codes.length === 1
             ? `Blinter: Ask Copilot about ${codes[0]}`
             : `Blinter: Ask Copilot about ${codeList}`;
@@ -523,6 +545,109 @@ class BlinterController {
     }
 
     vscode.window.showWarningMessage('Copilot Chat command is unavailable. Install/enable GitHub Copilot Chat to use this quick fix.');
+  }
+
+  async resolveSuppressionTargetDocument() {
+    const isBatchDoc = (doc) => Boolean(
+      doc
+      && doc.uri
+      && (
+        doc.languageId === 'bat'
+        || doc.languageId === 'cmd'
+        || /\.(bat|cmd)$/i.test(doc.uri.fsPath || '')
+      )
+    );
+
+    const activeDocument = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
+    if (isBatchDoc(activeDocument)) {
+      return activeDocument;
+    }
+
+    const visibleEditor = vscode.window.visibleTextEditors.find((editor) => isBatchDoc(editor.document));
+    if (visibleEditor) {
+      return visibleEditor.document;
+    }
+
+    const candidatePaths = [];
+    if (this.currentProgramPath) {
+      candidatePaths.push(this.currentProgramPath);
+    }
+    for (const filePath of this.issuesByFile.keys()) {
+      candidatePaths.push(filePath);
+    }
+
+    const dedupedPaths = [...new Set(candidatePaths)];
+    for (const candidatePath of dedupedPaths) {
+      if (typeof candidatePath !== 'string' || !candidatePath.trim()) {
+        continue;
+      }
+      if (!/\.(bat|cmd)$/i.test(candidatePath)) {
+        continue;
+      }
+      if (!fs.existsSync(candidatePath)) {
+        continue;
+      }
+      try {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(candidatePath));
+        if (isBatchDoc(doc)) {
+          return doc;
+        }
+      } catch {
+        // Keep scanning candidates.
+      }
+    }
+
+    return undefined;
+  }
+
+  async removeAllSuppressionComments() {
+    const doc = await this.resolveSuppressionTargetDocument();
+    if (!doc) {
+      vscode.window.showInformationMessage('Open a .bat or .cmd file to remove suppression comments.');
+      return;
+    }
+
+    const suppressionLineRegex = /^\s*(?:REM|::)\s+LINT:IGNORE(?:-LINE)?(?:\b|\s)/i;
+    const rangesToDelete = [];
+    for (let i = 0; i < doc.lineCount; i += 1) {
+      const line = doc.lineAt(i);
+      if (!suppressionLineRegex.test(line.text)) {
+        continue;
+      }
+      rangesToDelete.push(line.rangeIncludingLineBreak);
+    }
+
+    if (rangesToDelete.length === 0) {
+      vscode.window.showInformationMessage(`No suppression comments found in ${path.basename(doc.uri.fsPath)}.`);
+      return;
+    }
+
+    const edit = new vscode.WorkspaceEdit();
+    for (const range of rangesToDelete) {
+      edit.delete(doc.uri, range);
+    }
+
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      vscode.window.showErrorMessage('Unable to apply suppression removal edits.');
+      return;
+    }
+
+    this.log(`[Suppressions] Removed ${rangesToDelete.length} suppression comment(s) from ${doc.uri.fsPath}`);
+    this.refreshSuppressionDecorations();
+    const suffix = rangesToDelete.length === 1 ? '' : 's';
+    vscode.window.showInformationMessage(`Removed ${rangesToDelete.length} suppression comment${suffix} from ${path.basename(doc.uri.fsPath)}.`);
+  }
+
+  getOutputViewStateForTest() {
+    if (!this.webviewProvider) {
+      return {
+        viewResolved: false,
+        containsRemoveSuppressionsButton: false,
+        containsRemoveSuppressionsHandler: false
+      };
+    }
+    return this.webviewProvider.getUiStateForTest();
   }
 
   resetDecorationStyle() {
@@ -1123,6 +1248,7 @@ class BlinterOutputViewProvider {
     this._view = undefined;
     this._data = { groups: [] };
     this._status = { state: 'idle', detail: '' };
+    this._lastRenderedHtml = '';
   }
 
   resolveWebviewView(webviewView) {
@@ -1131,11 +1257,20 @@ class BlinterOutputViewProvider {
     webview.options = {
       enableScripts: true
     };
-    webview.html = this.renderHtml(webview);
+    this._lastRenderedHtml = this.renderHtml(webview);
+    webview.html = this._lastRenderedHtml;
 
     webview.onDidReceiveMessage((msg) => {
       if (msg?.command === 'reveal' && msg.path) {
         this.controller.revealLocation(msg.path, msg.line);
+        return;
+      }
+      if (msg?.command === 'removeSuppressions') {
+        void this.controller.removeAllSuppressionComments().catch((err) => {
+          const message = err && err.message ? err.message : String(err);
+          this.controller.log(`[Suppressions] Error: ${message}`);
+          vscode.window.showErrorMessage('Failed to remove suppression comments. Check the Blinter Output channel for details.');
+        });
       }
     });
 
@@ -1161,6 +1296,15 @@ class BlinterOutputViewProvider {
   updateStatus(status) {
     this._status = status || { state: 'idle', detail: '' };
     this.postUpdate();
+  }
+
+  getUiStateForTest() {
+    const html = this._lastRenderedHtml || '';
+    return {
+      viewResolved: Boolean(this._view),
+      containsRemoveSuppressionsButton: html.includes('id="removeSuppressionsBtn"'),
+      containsRemoveSuppressionsHandler: html.includes("command: 'removeSuppressions'")
+    };
   }
 
   postUpdate() {
@@ -1202,6 +1346,24 @@ class BlinterOutputViewProvider {
         margin-bottom: 12px;
         color: var(--vscode-descriptionForeground);
       }
+      .toolbar {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 10px;
+      }
+      .toolbar button {
+        border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder, #6b6b6b));
+        background: var(--vscode-button-background, #0e639c);
+        color: var(--vscode-button-foreground, #ffffff);
+        padding: 4px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .toolbar button:hover {
+        background: var(--vscode-button-hoverBackground, #1177bb);
+      }
       .group {
         margin-bottom: 12px;
       }
@@ -1225,6 +1387,7 @@ class BlinterOutputViewProvider {
         font-size: 12px;
         cursor: pointer;
         border-bottom: 1px solid var(--vscode-list-hoverBackground);
+        align-items: flex-start;
       }
       .item:last-child {
         border-bottom: none;
@@ -1236,6 +1399,15 @@ class BlinterOutputViewProvider {
         font-family: var(--vscode-editor-font-family);
         color: var(--vscode-textLink-foreground);
         min-width: 72px;
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+      .message {
+        min-width: 0;
+        flex: 1 1 auto;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .severity-error {
         color: var(--vscode-errorForeground);
@@ -1253,6 +1425,9 @@ class BlinterOutputViewProvider {
     </style>
   </head>
   <body>
+    <div class="toolbar">
+      <button id="removeSuppressionsBtn" type="button">Remove All Suppressions</button>
+    </div>
     <div class="status" id="status">Waiting for Blinter...</div>
     <div id="content"></div>
     <script>
@@ -1313,7 +1488,7 @@ class BlinterOutputViewProvider {
             const displayLine = escapeHtml(item.fileName) + ':' + escapeHtml(item.line || 0);
             parts.push('<div class="item" data-path="' + escapeHtml(item.filePath) + '" data-line="' + escapeHtml(item.line || 0) + '">');
             parts.push('<span class="line ' + severityClass + '">' + displayLine + '</span>');
-            parts.push('<span>' + escapeHtml(item.message) + '</span>');
+            parts.push('<span class="message">' + escapeHtml(item.message) + '</span>');
             parts.push('</div>');
           }
           parts.push('</div></div>');
@@ -1331,6 +1506,13 @@ class BlinterOutputViewProvider {
         const line = Number(target.getAttribute('data-line')) || 0;
         vscodeApi.postMessage({ command: 'reveal', path, line });
       });
+
+      const removeButton = document.getElementById('removeSuppressionsBtn');
+      if (removeButton) {
+        removeButton.addEventListener('click', () => {
+          vscodeApi.postMessage({ command: 'removeSuppressions' });
+        });
+      }
 
       window.addEventListener('message', (event) => {
         if (event.data && event.data.command === 'refresh') {
