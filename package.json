@@ -1,6 +1,6 @@
 {
   "name": "blinter",
-  "version": "1.26.15623",
+  "version": "1.26.15625",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
   "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes (Core v1.0.112 @ 3564f35). Only supports Windows OS.",
@@ -146,6 +146,10 @@
       {
         "command": "blinter.createConfig",
         "title": "Blinter: Create Config File"
+      },
+      {
+        "command": "blinter.askCopilot",
+        "title": "Blinter: Ask Copilot About Diagnostic"
       }
     ],
     "configuration": {
@@ -255,7 +259,7 @@
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
-    "test": "vscode-test",
+    "test": "node ./test/runTest.js",
     "test:unit": "mocha \"test/parser.test.js\" \"test/blinterRunner.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\"",
     "test:integration": "node ./test/runTest.js",
     "prepare:icons": "node ./tools/generate-icons.js",

@@ -17,7 +17,7 @@ function createFakeProcess() {
 }
 
 describe('InlineDebugAdapterSession', () => {
-  it('streams output to controller and emits DAP lifecycle events', () => {
+  it('streams output to controller and emits DAP lifecycle events', async () => {
     const capturedMessages = [];
     const accepted = [];
     const exits = [];
@@ -61,6 +61,7 @@ describe('InlineDebugAdapterSession', () => {
 
     adapter.handleMessage({ type: 'request', seq: 1, command: 'initialize' });
     adapter.handleMessage({ type: 'request', seq: 2, command: 'launch', arguments: { program: 'script.bat' } });
+    await new Promise((resolve) => setImmediate(resolve));
 
     assert.strictEqual(prepared.length, 1);
     assert.strictEqual(fakeProcess instanceof EventEmitter, true);

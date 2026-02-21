@@ -8,6 +8,14 @@ const { analyzeLine, buildVariableIndexFromFile } = require('./lib/analysis');
 const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 
+function resolveBlinterExePath(context) {
+  const candidate = getExePath((context && (context.extensionUri || context.extensionPath)) || undefined);
+  if (typeof candidate !== 'string' || !candidate.trim()) {
+    throw new Error('Blinter executable path could not be resolved.');
+  }
+  return candidate;
+}
+
 function activate(context) {
   if (process.platform !== 'win32') {
     vscode.window.showErrorMessage('Blinter only supports Windows OS. Extension will not be activated.');
@@ -129,7 +137,7 @@ function activate(context) {
       }
     }
 
-    const exePath = getExePath(context.extensionUri);
+    const exePath = resolveBlinterExePath(context);
     const proc = cp.spawn(exePath, ['--create-config'], {
       cwd: workspaceRoot,
       windowsHide: true
@@ -155,6 +163,15 @@ function activate(context) {
       controller.log(`[CreateConfig] Error: ${err.message}`);
       vscode.window.showErrorMessage('Failed to run Blinter. Check the Blinter Output channel for details.');
     });
+  }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.askCopilot', async (payload) => {
+    try {
+      await controller.askCopilotAboutDiagnostic(payload);
+    } catch (err) {
+      controller.log(`[AskCopilot] Error: ${err && err.message ? err.message : String(err)}`);
+      vscode.window.showErrorMessage('Unable to open Copilot Chat for this diagnostic.');
+    }
   }));
 }
 
@@ -410,46 +427,16 @@ class BlinterController {
         const codes = [...new Set(blinterDiags.map(d => String(d.code)))];
         const codeList = codes.join(', ');
 
-        const lineIndex = range.start.line;
+        const lineIndex = (blinterDiags[0] && blinterDiags[0].range ? blinterDiags[0].range.start.line : range.start.line);
         const lineText = document.lineAt(lineIndex).text;
+        const indent = (lineText.match(/^(\s*)/) || [''])[0];
+        const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
 
-        // Action 1: Suppress on this line (LINT:IGNORE-LINE)
+        // Action 1: Suppress on this line (LINT:IGNORE above target line)
         {
           const label = codes.length === 1
             ? `Blinter: Suppress ${codes[0]} on this line`
             : `Blinter: Suppress ${codeList} on this line`;
-          const action = new vscode.CodeAction(label, vscode.CodeActionKind.QuickFix);
-          action.edit = new vscode.WorkspaceEdit();
-          action.diagnostics = [...blinterDiags];
-
-          // Check if line already has a LINT:IGNORE-LINE comment
-          const ignoreLineMatch = lineText.match(/(?:REM|::)\s+LINT:IGNORE-LINE\s+(.*)/i);
-          if (ignoreLineMatch) {
-            // Merge codes
-            const existingCodes = ignoreLineMatch[1].split(',').map(c => c.trim());
-            const allCodes = [...new Set([...existingCodes, ...codes])];
-            const newComment = `${commentStyle} LINT:IGNORE-LINE ${allCodes.join(', ')}`;
-            const commentStart = lineText.search(/(?:REM|::)\s+LINT:IGNORE-LINE/i);
-            const replaceRange = new vscode.Range(lineIndex, commentStart, lineIndex, lineText.length);
-            action.edit.replace(document.uri, replaceRange, newComment);
-          } else if (lineText.trimEnd().endsWith('^')) {
-            // Line continuation — insert on new line above instead
-            const indent = lineText.match(/^(\s*)/)[1];
-            const insertPos = new vscode.Position(lineIndex, 0);
-            action.edit.insert(document.uri, insertPos, `${indent}${commentStyle} LINT:IGNORE-LINE ${codeList}\r\n`);
-          } else {
-            // Append to end of line
-            const endPos = new vscode.Position(lineIndex, lineText.length);
-            action.edit.insert(document.uri, endPos, `  ${commentStyle} LINT:IGNORE-LINE ${codeList}`);
-          }
-          actions.push(action);
-        }
-
-        // Action 2: Suppress next occurrence (LINT:IGNORE above)
-        {
-          const label = codes.length === 1
-            ? `Blinter: Suppress ${codes[0]} on next occurrence`
-            : `Blinter: Suppress ${codeList} on next occurrence`;
           const action = new vscode.CodeAction(label, vscode.CodeActionKind.QuickFix);
           action.edit = new vscode.WorkspaceEdit();
           action.diagnostics = [...blinterDiags];
@@ -466,19 +453,76 @@ class BlinterController {
               const replaceRange = new vscode.Range(lineIndex - 1, commentStart, lineIndex - 1, aboveLine.length);
               action.edit.replace(document.uri, replaceRange, newComment);
               actions.push(action);
-              return actions;
+            } else {
+              const insertPos = new vscode.Position(lineIndex, 0);
+              action.edit.insert(document.uri, insertPos, `${indent}${commentStyle} LINT:IGNORE ${codeList}${eol}`);
+              actions.push(action);
             }
+          } else {
+            const insertPos = new vscode.Position(lineIndex, 0);
+            action.edit.insert(document.uri, insertPos, `${indent}${commentStyle} LINT:IGNORE ${codeList}${eol}`);
+            actions.push(action);
           }
+        }
 
-          const indent = lineText.match(/^(\s*)/)[1];
-          const insertPos = new vscode.Position(lineIndex, 0);
-          action.edit.insert(document.uri, insertPos, `${indent}${commentStyle} LINT:IGNORE ${codeList}\r\n`);
+        // Action 2: Ask Copilot for help with this diagnostic.
+        {
+          const label = codes.length === 1
+            ? `Blinter: Ask Copilot about ${codes[0]}`
+            : `Blinter: Ask Copilot about ${codeList}`;
+          const action = new vscode.CodeAction(label, vscode.CodeActionKind.QuickFix);
+          action.diagnostics = [...blinterDiags];
+          action.command = {
+            title: label,
+            command: 'blinter.askCopilot',
+            arguments: [{
+              uri: document.uri.toString(),
+              codeList,
+              message: blinterDiags[0] ? blinterDiags[0].message : '',
+              line: lineIndex + 1,
+              lineText: lineText.trim()
+            }]
+          };
           actions.push(action);
         }
 
         return actions;
       }
     };
+  }
+
+  async askCopilotAboutDiagnostic(payload) {
+    const info = payload || {};
+    const codeList = typeof info.codeList === 'string' && info.codeList.trim() ? info.codeList.trim() : 'this Blinter issue';
+    const message = typeof info.message === 'string' ? info.message.trim() : '';
+    const line = typeof info.line === 'number' ? info.line : undefined;
+    const lineText = typeof info.lineText === 'string' ? info.lineText : '';
+    const uri = typeof info.uri === 'string' ? info.uri : '';
+
+    const promptParts = [`Help me fix ${codeList} in my batch script.`];
+    if (message) promptParts.push(`Blinter message: ${message}`);
+    if (line) promptParts.push(`Line: ${line}`);
+    if (lineText) promptParts.push(`Code: ${lineText}`);
+    if (uri) promptParts.push(`File: ${uri}`);
+    const prompt = promptParts.join('\n');
+
+    const commands = await vscode.commands.getCommands(true);
+    const has = (id) => commands.includes(id);
+
+    if (has('github.copilot.chat.open')) {
+      await vscode.commands.executeCommand('github.copilot.chat.open', { query: prompt });
+      return;
+    }
+    if (has('workbench.action.chat.open')) {
+      await vscode.commands.executeCommand('workbench.action.chat.open', { query: prompt });
+      return;
+    }
+    if (has('workbench.action.chat.openInSidebar')) {
+      await vscode.commands.executeCommand('workbench.action.chat.openInSidebar', prompt);
+      return;
+    }
+
+    vscode.window.showWarningMessage('Copilot Chat command is unavailable. Install/enable GitHub Copilot Chat to use this quick fix.');
   }
 
   resetDecorationStyle() {
@@ -561,7 +605,10 @@ class BlinterController {
       workspaceFolder = path.dirname(programPath);
     }
 
-    const exePath = getExePath(this.context.extensionUri);
+    const exePath = resolveBlinterExePath(this.context);
+    if (typeof exePath !== 'string' || !exePath) {
+      throw new Error(`Resolved executable is invalid (type=${typeof exePath}, value=${String(exePath)}, hasContext=${Boolean(this.context)}, hasExtUri=${Boolean(this.context && this.context.extensionUri)}, hasExtPath=${Boolean(this.context && this.context.extensionPath)})`);
+    }
     const cliArgs = buildArgs(config, programPath);
     const userArgs = Array.isArray(args.args) ? args.args.filter((value) => typeof value === 'string' && value.trim().length > 0) : [];
     const fullArgs = [...cliArgs, ...userArgs];
@@ -894,7 +941,7 @@ class BlinterController {
       this._currentLintHandle = null;
     }
 
-    const exePath = getExePath(this.context.extensionUri);
+    const exePath = resolveBlinterExePath(this.context);
 
     const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
       ? vscode.workspace.workspaceFolders[0].uri.fsPath
