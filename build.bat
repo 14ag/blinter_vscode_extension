@@ -1,3 +1,4 @@
+
 @echo off
 for %%d in (*.vsix) do set oldBlinter=%%d
 if defined oldBlinter (
