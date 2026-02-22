@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-02-22T14:36:34.203Z",
+  "results": [
+    {
+      "command": "npm run test:unit",
+      "exitCode": 0,
+      "durationSeconds": 0.45,
+      "stdout": "\n> blinter@1.26.15681 test:unit\n> mocha \"test/parser.test.js\" \"test/blinterRunner.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\" \"test/discovery.test.js\"\n\n\n\n  Parser tests\n    √ parses single error line\n    √ parses multiple lines and ignores non-matching\n    √ parses detailed multi-line Blinter v1.0.94 output format\n    √ parses SEC and P rule families\n    √ maps detailed SEC rules to warning severity\n\n  BlinterRunner — buildArgs\n    √ always appends --summary and the file path as last args\n    √ adds --follow-calls when enabled\n    √ adds --min-severity when not \"all\"\n    √ omits --min-severity when \"all\"\n    √ adds --enabled-rules when non-empty\n    √ adds --disabled-rules when non-empty\n    √ adds --no-config when useConfigFile is false\n    √ adds --max-line-length when not default (100)\n    √ adds --no-recursive when enabled\n\n  BlinterRunner — getExePath\n    √ returns the correct path to the vendored EXE\n\n  Analysis pipeline\n    √ classifies bracketed output and flags critical issues\n    √ tracks variable assignments and produces variable trace for undefined variables\n    √ resolves relative file paths against workspace root\n    √ treats informational detailed codes as non-critical info issues\n\n  InlineDebugAdapterSession\n    √ streams output to controller and emits DAP lifecycle events\n\n  Discovery tests\n    √ returns bin path when bin contains executable\n    √ returns bins path when bin missing but bins contains executable\n    √ returns null when no executable present\n\n\n  23 passing (34ms)\n\n",
+      "stderr": "",
+      "type": "Unit Testing"
+    },
+    {
+      "command": "npm run test:integration",
+      "exitCode": 0,
+      "durationSeconds": 7.4,
+      "stdout": "\n> blinter@1.26.15681 test:integration\n> node ./test/runTest.js\n\n\r\n[main 2026-02-22T14:36:22.379Z] update#setState disabled\n[main 2026-02-22T14:36:22.380Z] update#ctor - updates are disabled by the environment\nChatSessionStore: Migrating 0 chat sessions from storage service to file system\nStarted local extension host with pid 8972.\nLoading development extension at c:\\Users\\philip\\sauce\\blinter-vscode-extension\nMCP Registry configured: https://api.mcp.github.com/2025-09-15\nSettings Sync: Account status changed from uninitialized to unavailable\n\u001b[0m\u001b[0m\n\u001b[0m  Smoke tests\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m executes the core parsing + analysis path without throwing\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m builds arguments and resolves expected executable locations\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m resolves system blinter command when configured\u001b[0m\n\u001b[0m  Security tests\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m does not use dynamic code execution primitives\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m does not hardcode obvious secrets in source files\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m avoids shell=true and exec-style process launching in runtime extension code\u001b[0m\n\u001b[0m  Sanity tests\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m keeps detailed SEC severity aligned as warning\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m keeps detailed style issues informational and non-critical\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m flushes trailing stdout data without a newline on process close\u001b[0m\n\u001b[0m  Regression tests\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m spawnBlinter calls onExit once when both error and close fire\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m debug adapter emits terminated once when process emits error then close\u001b[0m\n\u001b[0m  Parser tests\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m parses single error line\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m parses multiple lines and ignores non-matching\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m parses detailed multi-line Blinter v1.0.94 output format\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m parses SEC and P rule families\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m maps detailed SEC rules to warning severity\u001b[0m\n\u001b[0m  Integration (smoke) - Run & Debug single file\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m starts debug session for single open .bat file\u001b[0m\u001b[31m (1578ms)\u001b[0m\n\u001b[0m  Integration (simulation) - debugger + suppressions\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m validates launch/debug + suppression UI contributions\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m inserts suppression via quick fix and removes it via button command path\u001b[0m\u001b[31m (2514ms)\u001b[0m\n\u001b[0m  Integration (basic) Test Suite\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m blinter.run command is registered\u001b[0m\n\u001b[0m  Extension Test Suite\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m Sample test\u001b[0m\n\u001b[0m  Exploratory fuzz tests\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m parser and analyzer stay stable across randomized mixed input\u001b[0m\n\u001b[0m  Discovery tests\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m returns bin path when bin contains executable\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m returns bins path when bin missing but bins contains executable\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m returns null when no executable present\u001b[0m\n\u001b[0m  InlineDebugAdapterSession\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m streams output to controller and emits DAP lifecycle events\u001b[0m\n\u001b[0m  BlinterRunner — buildArgs\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m always appends --summary and the file path as last args\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m adds --follow-calls when enabled\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m adds --min-severity when not \"all\"\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m omits --min-severity when \"all\"\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m adds --enabled-rules when non-empty\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m adds --disabled-rules when non-empty\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m adds --no-config when useConfigFile is false\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m adds --max-line-length when not default (100)\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m adds --no-recursive when enabled\u001b[0m\n\u001b[0m  BlinterRunner — getExePath\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m returns the correct path to the vendored EXE\u001b[0m\n\u001b[0m  Analysis pipeline\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m classifies bracketed output and flags critical issues\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m tracks variable assignments and produces variable trace for undefined variables\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m resolves relative file paths against workspace root\u001b[0m\n  \u001b[32m  √\u001b[0m\u001b[90m treats informational detailed codes as non-critical info issues\u001b[0m\n\u001b[92m \u001b[0m\u001b[32m 40 passing\u001b[0m\u001b[90m (4s)\u001b[0m\n[main 2026-02-22T14:36:28.572Z] Extension host with pid 8972 exited with code: 0, signal: unknown.\nExit code:   0\nVS Code integration tests finished successfully.\n",
+      "stderr": "Cached VS Code executable is invalid. Falling back to download. Reason: Configured VS Code executable does not report a VS Code version: C:\\Users\\philip\\sauce\\testbench\\.vscode-test\\vscode-win32-x64-archive-1.105.1\\Code.exe\n- Resolving version...\n√ Validated version: 1.105.1\n√ Found existing install in C:\\Users\\philip\\sauce\\blinter-vscode-extension\\.vscode-test\\vscode-win32-x64-archive-1.105.1\n",
+      "type": "Integration Testing"
+    },
+    {
+      "command": "npx vsce package --no-dependencies --out tmp/system-test.vsix",
+      "exitCode": 0,
+      "durationSeconds": 2.43,
+      "stdout": " DONE  Packaged: tmp/system-test.vsix (20 files, 9.76MB)\n",
+      "stderr": "",
+      "type": "System Testing"
+    },
+    {
+      "command": "npm run test:uat",
+      "exitCode": 0,
+      "durationSeconds": 0.23,
+      "stdout": "\n> blinter@1.26.15681 test:uat\n> node ./test/uat.runner.js\n\nUAT checks passed.\n",
+      "stderr": "",
+      "type": "Acceptance Testing (UAT)"
+    },
+    {
+      "command": "npm run test:regression",
+      "exitCode": 0,
+      "durationSeconds": 0.37,
+      "stdout": "\n> blinter@1.26.15681 test:regression\n> mocha \"test/regression.test.js\"\n\n\n\n  Regression tests\n    √ spawnBlinter calls onExit once when both error and close fire\n    √ debug adapter emits terminated once when process emits error then close\n\n\n  2 passing (3ms)\n\n",
+      "stderr": "",
+      "type": "Regression Testing"
+    },
+    {
+      "command": "npm run test:performance",
+      "exitCode": 0,
+      "durationSeconds": 0.29,
+      "stdout": "\n> blinter@1.26.15681 test:performance\n> node ./test/performance.runner.js\n\nParser benchmark: 8.10ms for 3000 issues.\nAnalysis benchmark: 47.37ms for 15000 analyzed issues.\nPerformance report written to: C:\\Users\\philip\\sauce\\blinter-vscode-extension\\test\\reports\\performance-latest.json\n",
+      "stderr": "",
+      "type": "Performance Testing"
+    },
+    {
+      "command": "npm run test:security && npm run test:security:audit",
+      "exitCode": 0,
+      "durationSeconds": 0.99,
+      "stdout": "\n> blinter@1.26.15681 test:security\n> mocha \"test/security.test.js\"\n\n\n\n  Security tests\n    √ does not use dynamic code execution primitives\n    √ does not hardcode obvious secrets in source files\n    √ avoids shell=true and exec-style process launching in runtime extension code\n\n\n  3 passing (10ms)\n\n\n> blinter@1.26.15681 test:security:audit\n> npm audit --omit=dev --audit-level=high\n\nfound 0 vulnerabilities\n",
+      "stderr": "",
+      "type": "Security Testing"
+    },
+    {
+      "command": "npm run test:smoke",
+      "exitCode": 0,
+      "durationSeconds": 0.35,
+      "stdout": "\n> blinter@1.26.15681 test:smoke\n> mocha \"test/smoke.test.js\"\n\n\n\n  Smoke tests\n    √ executes the core parsing + analysis path without throwing\n    √ builds arguments and resolves expected executable locations\n    √ resolves system blinter command when configured\n\n\n  3 passing (4ms)\n\n",
+      "stderr": "",
+      "type": "Smoke Testing"
+    },
+    {
+      "command": "npm run test:sanity",
+      "exitCode": 0,
+      "durationSeconds": 0.41,
+      "stdout": "\n> blinter@1.26.15681 test:sanity\n> mocha \"test/sanity.test.js\"\n\n\n\n  Sanity tests\n    √ keeps detailed SEC severity aligned as warning\n    √ keeps detailed style issues informational and non-critical\n    √ flushes trailing stdout data without a newline on process close\n\n\n  3 passing (6ms)\n\n",
+      "stderr": "",
+      "type": "Sanity Testing"
+    },
+    {
+      "command": "npm run test:exploratory",
+      "exitCode": 0,
+      "durationSeconds": 0.36,
+      "stdout": "\n> blinter@1.26.15681 test:exploratory\n> mocha \"test/exploratory.test.js\"\n\n\n\n  Exploratory fuzz tests\n    √ parser and analyzer stay stable across randomized mixed input\n\n\n  1 passing (19ms)\n\n",
+      "stderr": "",
+      "type": "Exploratory Testing"
+    }
+  ]
+}

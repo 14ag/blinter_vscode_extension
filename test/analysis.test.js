@@ -57,5 +57,19 @@ describe('Analysis pipeline', () => {
     assert.strictEqual(issue.line, 3);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it('treats informational detailed codes as non-critical info issues', () => {
+    const defaultFile = path.join(__dirname, 'fixtures', 'variable-sample.bat');
+    const issues = analyzeLine('Line 4: Prefer .cmd extension for modern systems (S007)', {
+      workspaceRoot: null,
+      defaultFile,
+      variableIndex: new Map()
+    }).issues;
+
+    assert.strictEqual(issues.length, 1);
+    assert.strictEqual(issues[0].severity, 'information');
+    assert.strictEqual(issues[0].classification, 'Info');
+    assert.strictEqual(issues[0].isCritical, false);
+  });
 });
 

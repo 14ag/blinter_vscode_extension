@@ -59,9 +59,15 @@ async function main() {
     };
 
     if (preferredExecutable && fs.existsSync(preferredExecutable)) {
-      assertLooksLikeVSCodeExecutable(preferredExecutable);
-      runOptions.vscodeExecutablePath = preferredExecutable;
-      console.log(`Using cached VS Code executable: ${preferredExecutable}`);
+      try {
+        assertLooksLikeVSCodeExecutable(preferredExecutable);
+        runOptions.vscodeExecutablePath = preferredExecutable;
+        console.log(`Using cached VS Code executable: ${preferredExecutable}`);
+      } catch (validationError) {
+        const message = validationError instanceof Error ? validationError.message : String(validationError);
+        console.warn(`Cached VS Code executable is invalid. Falling back to download. Reason: ${message}`);
+        runOptions.version = vscodeVersion;
+      }
     } else {
       runOptions.version = vscodeVersion;
       console.log(`Cached VS Code not found. Downloading version: ${vscodeVersion}`);

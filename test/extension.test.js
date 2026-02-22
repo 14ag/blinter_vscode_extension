@@ -5,9 +5,8 @@ const assert = require('assert');
 // (plain mocha) can run unit tests without failing.
 let vscode;
 try {
-  // eslint-disable-next-line global-require
   vscode = require('vscode');
-} catch (e) {
+} catch {
   console.log('Skipping extension integration tests: vscode module not available in this environment.');
   // Export an empty module so Mocha exits cleanly.
   module.exports = {};

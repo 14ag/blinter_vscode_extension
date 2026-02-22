@@ -1,282 +1,70 @@
 # Blinter extension progress
 
-version: 1
-
+version: 2
 repository: Blinter VS Code extension (local workspace)
-root: c:\Users\philip\sauce\blinter_vscode_extension
-
+root: c:\Users\philip\sauce\blinter-vscode-extension
 owner: unspecified
-
-last_updated: 2025-11-02T12:30:00Z
-
+last_updated: 2026-02-22T14:40:00Z
 
 current_state:
-- VS Code extension exposes a debug type (`blinter`) backed by an inline debug adapter wrapping `lib/debugAdapterCore.js` and the bundled Blinter executable.
-- Streaming analysis lives in `lib/analysis.js`, producing diagnostics, hover content, and configurable critical issue decorations while feeding the Blinter Output webview.
-- Unit suite now covers parser, discovery, analyzer, and inline debug adapter behaviour (`npm run test:unit`).
-- Documentation (`README.md`, `PACKAGING.md`, `project.txt`) reflects the Run & Debug workflow with a launch.json example.
-- ESLint ignore patterns migrated into `eslint.config.mjs`; legacy `.eslintignore` removed to silence warnings.
+- Extension uses `blinter-debug` inline adapter flow with diagnostics, hovers, suppressions, and output webview in `extension.js`.
+- Severity handling is now consistent (`error`, `warning`, `information`, `hint`) across parser, analyzer, and UI summary grouping.
+- Lint execution path uses shared spawn helper with stale-run guards to reduce race conditions and stale diagnostic updates.
+- Unit and integration suites are passing locally.
+- Full test matrix command (`npm run test:matrix`) now executes all requested testing categories and writes reports to `test/reports/`.
 
-goals:
-1. Implement a production-grade Blinter integration per project spec (automatic/on-demand linting, UI, settings, diagnostics, quick fixes)
+recent_execution:
+- Ran `npm run lint`: pass.
+- Ran `npm run test:unit`: pass.
+- Ran `npm run test:integration`: pass.
+- Ran `npm run test:matrix`: pass across unit, integration, system, UAT, regression, performance, security, smoke, sanity, exploratory.
 
-next_actions (actionable steps for next agent):
-1. Extend analyzer coverage for multi-file variable traces and ensure the webview remains performant with large result sets (rate limiting / batching if needed).
-2. Consider lightweight integration smoke tests (e.g., simulate debug adapter session to verify webview payloads) if additional assurance is required.
+artifacts_generated:
+- `test/reports/test-matrix-latest.md`
+- `test/reports/test-matrix-latest.json`
+- `test/reports/performance-latest.json`
+- `test/reports/uat-latest.json`
+- `tmp/system-test.vsix`
 
-notes:
-- No existing `.github/copilot-instructions.md` prior to this session; a canonical one was added.
-- The user asked for a `progress` file to be updated after every step to allow handoff between agents.
+open_items:
+- UAT manual checklist still has pending user-verified items:
+  - create/open `blinter.ini` flow in a real user workspace
+  - status bar indicator behavior in manual UX pass
+  - click-through navigation validation from output list under manual workflow
+
+next_actions (for next agent):
+1. Complete remaining manual UAT checklist items in `test/UAT_CHECKLIST.md`.
+2. Decide whether to include `npm run test:matrix` in CI or keep as local release gate.
+3. If desired, clean historical encoding artifacts in old generated logs/docs that still contain mojibake.
 
 history:
-- created by agent on 2025-10-22: initial state recorded and next actions enumerated
+- step_2026-02-22-1:
+  description: Stabilized runtime behavior and consistency. Refactored lint spawning to shared helper usage, fixed stale-run update races, unified severity handling, reduced noisy parser logging, and tightened debug process lifecycle handling.
+  files_changed:
+    - extension.js
+    - lib/parser.js
+    - lib/analysis.js
+    - lib/blinterRunner.js
+    - lib/debugAdapterCore.js
+    - test/parser.test.js
+    - test/analysis.test.js
+    - test/debugAdapter.test.js
+    - test/extension.test.js
+    - test/suite/index.js
+    - eslint.config.mjs
+    - package.json
 
-- step_2025-10-22-1:
-	description: Updated `package.json` to add activationEvents (onLanguage:bat), `blinter.run` command, editor context menu entry, activity bar view container and configuration properties (blinter.enabled, blinter.runOn, blinter.debounceDelay, blinter.pythonPath, blinter.rulesPath).
-	files_changed:
-		- package.json: contributed commands, menus, viewsContainers, views, configuration
-	actor: automated-agent
-
-- step_2025-11-02-4:
-	description: Added integration smoke test that programmatically opens `tmp/sample1.bat` and starts a `blinter-debug` session (single-file mode). To make the test stable in CI, added a test-mode spawn stub and fallback behavior so tests don't execute external binaries. Ran integration suite with test-mode enabled; all integration tests passed.
-	files_changed:
-		- test/integration_smoke.test.js
-		- extension.js (added test-mode fake-spawn and cmd.exe fallback)
-		- bin/blinter.exe (placeholder)
-		- bin/Blinter-placeholder.exe (placeholder)
-	verification:
-		- Ran `BLINTER_TEST_MODE=1 npm run test:integration` (PowerShell: `$env:BLINTER_TEST_MODE='1'; npm run test:integration`) — 13 passing, 0 failing
-	actor: automated-agent
-
-	- step_2025-10-24-6:
-		description: Added GitHub Actions CI workflow `.github/workflows/ci.yml` to run lint + unit tests and a separate job to run the VS Code test harness and package a VSIX. Added `test/runTest.js` and updated `package.json` scripts and devDependencies to support integration testing and packaging.
-		files_changed:
-			- .github/workflows/ci.yml
-			- test/runTest.js
-			- package.json
-		actor: automated-agent
-
-		- step_2025-10-24-7:
-			description: Fixed parser unit test to use Mocha BDD interface (describe/it) so it runs with default Mocha. Updated `test/runTest.js` to accept `VSCODE_VERSION` environment variable and updated CI workflow to run integration tests against VS Code Insiders and added a `publish-release` job to create a GitHub Release and upload the `blinter.vsix` on tag pushes.
-			files_changed:
-				- test/parser.test.js
-				- test/runTest.js
-				- .github/workflows/ci.yml
-			actor: automated-agent
-
-		- step_2025-10-28-1:
-			description: Ceased support for Visual Studio (IDE). Removed the `visual-studio/` scaffold and manifest. Updated README and PACKAGING.md to clarify the extension is exe-only and targets VS Code and VS Code Insiders only.
-			files_changed:
-				- visual-studio/README.md (deleted)
-				- visual-studio/source.extension.vsixmanifest (deleted)
-				- README.md
-				- PACKAGING.md
-				- project.txt
-			actor: automated-agent
-
-		- step_2025-10-28-2:
-			description: Accept `bins/` as an alternative executable folder in addition to `bin/`. Updated `extension.js` to search `bin/` and `bins/` and updated docs accordingly.
-			files_changed:
-				- extension.js
-				- PACKAGING.md
-				- README.md
-			actor: automated-agent
-
-		- step_2025-10-28-3:
-			description: Added a testable discovery helper at `lib/discovery.js` and unit tests `test/discovery.test.js` that validate executable discovery behavior (bin vs bins vs missing). Updated `extension.js` to use the helper and updated `package.json` `test:unit` to run all `test/**/*.test.js`.
-			files_changed:
-				- lib/discovery.js
-				- test/discovery.test.js
-				- extension.js
-				- package.json
-			actor: automated-agent
-
-		- step_2025-10-28-4:
-			description: Restricted `test:unit` to run only hermetic unit tests (`test/parser.test.js` and `test/discovery.test.js`) to avoid executing tests that require the VS Code test harness (which would `require('vscode')`). This prevents `MODULE_NOT_FOUND: vscode` when running plain Mocha in CI/local environment.
-			files_changed:
-				- package.json
-			actor: automated-agent
-
-- step_2025-10-22-2:
-	description: Implemented scaffolding in `extension.js`:
-		- created OutputChannel 'Blinter'
-		- created Diagnostics collection 'blinter'
-		- created StatusBarItem that appears for `bat` files and ties to `blinter.run`
-		- registered `blinter.run` command with a stub runner that logs and creates example diagnostics when it finds marker text `TODO_BLINTER_ERROR` in an open file
-	files_changed:
-		- extension.js: registered commands, status bar, diagnostics, output channel, stub runner
-	actor: automated-agent
-
-	- step_2025-10-22-3:
-		description: Replaced stubbed runner with a real runner in `extension.js` that:
-			- attempts to locate `assets/blinter.py` (or `blinter.py` in extension root)
-			- runs the script using configured `blinter.pythonPath` (defaults to `python`)
-			- supports optional `blinter.rulesPath` argument
-			- parses stdout lines matching "[SEVERITY] (CODE) -> DESCRIPTION on line LINE_NUMBER" into `vscode.Diagnostic`s
-			- maps severities: INFO -> Information, WARN -> Warning, ERROR/FATAL -> Error
-			- publishes diagnostics to the `blinter` DiagnosticCollection
-			- shows output and stderr in the 'Blinter' Output channel
-			- updates the status bar with spinner/check/error icons
-			- adds automatic triggers: `onSave` and debounced `onType` based on `blinter.runOn` and `blinter.debounceDelay` settings
-		files_changed:
-			- extension.js: full runner implementation and event hooks
-		actor: automated-agent
-
-		- step_2025-10-22-4:
-			description: Prefer bundled native executable when available (bin/blinter.exe for Windows). Runner now:
-				- checks `bin/blinter.exe` (on Windows) or `bin/blinter` (on other platforms) first
-				- falls back to `assets/blinter.py` or `blinter.py` at extension root
-			files_changed:
-				- extension.js: prefer native executable and adjust spawn args
-			actor: automated-agent
-
-next_actions:
-- Extension is now ready for packaging and testing. All critical issues have been resolved.
-- The extension is fully functional with:
-  - Native Windows executable (Blinter.exe) in bins/ folder
-  - Complete linting functionality with automatic triggers (onSave/onType)
-  - UI integration (Activity Bar, Status Bar, Context Menu)
-  - Diagnostic parsing and display
-  - Quick fixes for common issues
-  - Comprehensive configuration options
-- Ready for packaging with `npm run package:vsix` or publishing to VS Code Marketplace
-
-- step_2025-10-24-1:
-	description: Added parser utility (`lib/parser.js`) and unit tests (`test/parser.test.js`) to validate stdout parsing logic.
-	files_changed:
-		- lib/parser.js
-		- test/parser.test.js
-	actor: automated-agent
-
-- step_2025-10-24-2:
-	description: Implemented CodeActionProvider for quick fixes (normalizes first token casing) and registered a WebviewViewProvider for `blinter.view` with a Run button.
-	files_changed:
-		- extension.js
-	actor: automated-agent
-
-- step_2025-10-24-3:
-	description: Added `PACKAGING.md` with packaging instructions and a minimal integration test `test/integration.test.js` that asserts `blinter.run` is registered.
-	files_changed:
-		- PACKAGING.md
-		- test/integration.test.js
-	actor: automated-agent
-
-- step_2025-10-24-4:
-	description: Reduced ESLint noise by adding `.eslintignore` to exclude `node_modules/` and `.vscode-test/`. Added `blinter.quickFixCodes` configuration and hardened CodeActionProvider to only offer quick-fixes for configured codes or messages mentioning casing.
-	files_changed:
-		- .eslintignore
-		- package.json
-		- extension.js
-	actor: automated-agent
-
-- step_2025-10-24-5:
-	description: Restricted `test:unit` npm script to run only `test/parser.test.js` to avoid running `test/extension.test.js` (which requires the VS Code test environment). This prevents "Cannot find module 'vscode'" when running unit tests with plain Mocha.
-	files_changed:
-		- package.json
-	actor: automated-agent
-
-- step_2025-01-27-1:
-	description: Fixed critical issues preventing proper packaging and testing:
-		- Fixed syntax error in package.json (trailing comma in configuration section)
-		- Added repository field to package.json to resolve packaging warning
-		- Created LICENSE file (MIT) to resolve packaging warning
-		- Updated package.json displayName and description to be more professional
-		- Changed categories from "Other" to "Linters" for better marketplace categorization
-		- Verified unit tests now pass (parser.test.js runs successfully)
-		- Confirmed linting passes with only warnings (no errors)
-	files_changed:
-		- package.json: fixed syntax, added repository, updated metadata
-		- LICENSE: created MIT license file
-	actor: automated-agent
-
-- step_2025-01-27-2:
-	description: Comprehensive testing verification completed:
-		- Ran `npm ci` successfully (362 packages installed, 2 moderate vulnerabilities noted)
-		- Executed `npm run test:unit` - all 5 tests passing (parser + discovery tests)
-		- Ran `npm run lint` - 0 errors, 9667 warnings (mostly from node_modules, 5 warnings in extension code)
-		- Confirmed extension is fully functional and production-ready
-		- All core features implemented: linting, UI integration, diagnostics, quick fixes
-		- Native Windows executable (Blinter.exe) present in bins/ folder
-	files_changed:
-		- progress: updated with test results and current status
-	actor: automated-agent
-
-
-	- step_2025-10-31-1:
-		description: Reused the original Blinter repository icon for Marketplace branding by converting `resources/blinter_icon.ico` into the extension's `icons/blinter-logo.png` and syncing the packaged base64 copy.
-		files_changed:
-			- icons/blinter-logo.png
-			- icons/blinter-logo.png.base64
-		actor: automated-agent
-
-	- step_2025-10-31-2:
-		description: Reworked the extension around a `blinter-debug` inline debug adapter: removed legacy run command/status UI, added debugger contribution + Run & Debug view integration, introduced `lib/analysis.js` for streaming issue classification, and updated `extension.js` to drive diagnostics, hovers, decorations, and the new output summary webview. Added placeholder `out/debugAdapter.js` and refreshed configuration/activation events.
-		files_changed:
-			- package.json
-			- extension.js
-			- lib/analysis.js (new)
-			- out/debugAdapter.js
-			- progress
-		actor: automated-agent
-
-	- step_2025-10-31-3:
-		description: Added `lib/debugAdapterCore.js`, rewired `extension.js` to consume it, introduced unit tests (`test/analysis.test.js`, `test/debugAdapter.test.js`) plus fixtures, refreshed docs (README.md, PACKAGING.md, project.txt), migrated ESLint ignores into `eslint.config.mjs`, removed `.eslintignore`, and reran `npm run test:unit`.
-		files_changed:
-			- extension.js
-			- lib/debugAdapterCore.js (new)
-			- lib/analysis.js
-			- test/analysis.test.js
-			- test/debugAdapter.test.js
-			- test/fixtures/variable-sample.bat
-			- package.json
-			- eslint.config.mjs
-			- README.md
-			- PACKAGING.md
-			- project.txt
-			- progress
-			- .eslintignore (removed)
-		actor: automated-agent
-
-
-- step_2025-11-01-1:
-	description: Created `run_tests.bat` to automate linting and unit tests, and added a new unit test to `test/parser.test.js` to handle detailed multi-line output. Updated the parser to handle the new output format.
-	files_changed:
-		- run_tests.bat
-		- test/parser.test.js
-		- lib/parser.js
-	actor: automated-agent
-
-- step_2025-11-01-2:
-	description: Fixed debugger type inconsistencies - standardized all references from "blinter-debug" to "blinter" to match package.json declaration. Removed duplicate BlinterConfigurationProvider registration, ensured debug adapter factory is registered correctly, and updated activation events. Improved resolveDebugConfiguration to better handle single-file mode and ${file} variable resolution.
-	files_changed:
-		- extension.js
-		- package.json
-	actor: automated-agent
-
-- step_2025-11-02-1:
-	description: Standardized debugger type to `blinter-debug` across `package.json` and `extension.js`. Fixed parser to correctly handle legacy and detailed Blinter output formats and added logging while diagnosing parser tests. Ran unit tests (mocha unit suite) and confirmed all unit tests pass locally.
-	files_changed:
-		- lib/parser.js (parser fixes + debug logging)
-		- extension.js (debug config provider updated to `blinter-debug`)
-		- package.json (debugger type and activation events normalized)
-	verification:
-		- Ran `npm run test:unit` locally: 10 passing, 0 failing.
-	actor: automated-agent
-
-- step_2025-11-02-2:
-	description: Prefixed unused function parameters with leading underscores in `extension.js` to indicate intentional unused arguments. Added a `files` whitelist to `package.json` so VSIX packaging includes only runtime files, lib, executables (`bin/`, `bins/`), icons and essential docs. Ran linter and unit tests; unit tests pass (10 passing) and lint reports only warnings about unused variables and assigned-but-unused regex in `lib/analysis.js`.
-	files_changed:
-		- extension.js (prefixed unused params: `_workspaceFolder`, `_token`, `_folder`)
-		- package.json (added `files` whitelist for packaging)
-	verification:
-		- Ran `npm run lint` and `npm run test:unit` locally. Tests: 10 passing. Lint: warnings only.
-	actor: automated-agent
-
-- step_2025-11-02-3:
-	description: Added formatting-snapshot rules and template to `.github/copilot-instructions.md` and `project.txt`. The rule requires agents to record a formatting snapshot to `progress.txt` (filename, encoding, EOL, indentation, trailing-newline, line count, 3-line sample, intent) before editing any file and to preserve formatting unless a reformat is explicitly requested. Suggested appending snapshots for the two modified files; next agent should create those snapshots when about to edit.
-	files_changed:
-		- .github/copilot-instructions.md
-		- project.txt
-	verification:
-		- NONE (documentation only)
-	actor: automated-agent
+- step_2026-02-22-2:
+  description: Added and executed a complete test taxonomy matrix (unit, integration, system, UAT, regression, performance, security, smoke, sanity, exploratory) with report generation and runner scripts.
+  files_changed:
+    - tools/run-test-matrix.js
+    - test/smoke.test.js
+    - test/sanity.test.js
+    - test/regression.test.js
+    - test/exploratory.test.js
+    - test/security.test.js
+    - test/performance.runner.js
+    - test/uat.runner.js
+    - test/UAT_CHECKLIST.md
+    - test/runTest.js
+    - package.json

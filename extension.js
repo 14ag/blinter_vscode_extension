@@ -8,6 +8,33 @@ const { analyzeLine, buildVariableIndexFromFile } = require('./lib/analysis');
 const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 
+function isBatchLanguageId(languageId) {
+  return languageId === 'bat' || languageId === 'cmd';
+}
+
+function isBatchDocument(document) {
+  return Boolean(document && isBatchLanguageId(document.languageId));
+}
+
+function getActiveOrVisibleBatchEditor() {
+  const activeEditor = vscode.window.activeTextEditor;
+  if (activeEditor && isBatchDocument(activeEditor.document)) {
+    return activeEditor;
+  }
+  return vscode.window.visibleTextEditors.find((editor) => isBatchDocument(editor.document));
+}
+
+function normalizeFilePath(filePath) {
+  if (typeof filePath !== 'string' || !filePath.trim()) {
+    return undefined;
+  }
+  return path.normalize(filePath);
+}
+
+function isInformationalSeverity(severity) {
+  return severity === 'info' || severity === 'information' || severity === 'hint';
+}
+
 function resolveBlinterExePath(context) {
   const candidate = getExePath((context && (context.extensionUri || context.extensionPath)) || undefined);
   if (typeof candidate !== 'string' || !candidate.trim()) {
@@ -28,7 +55,7 @@ function activate(context) {
       /**
        * Resolve configuration before debugging starts
        */
-      resolveDebugConfiguration(_workspaceFolder, config, _token) {
+      resolveDebugConfiguration(_workspaceFolder, config) {
         // Ensure config is an object
         if (!config || typeof config !== 'object') {
           config = { type: '', name: '', request: '' };
@@ -36,11 +63,7 @@ function activate(context) {
 
         // If no launch.json exists and user clicked "Run and Debug"
         if (!config.type && !config.request && !config.name) {
-          let editor = vscode.window.activeTextEditor;
-          // Robust check for batch file in active or visible editors
-          if (!editor || (editor.document.languageId !== 'bat' && editor.document.languageId !== 'cmd')) {
-            editor = vscode.window.visibleTextEditors.find(e => e.document.languageId === 'bat' || e.document.languageId === 'cmd');
-          }
+          const editor = getActiveOrVisibleBatchEditor();
 
           if (editor) {
             config.type = 'blinter-debug';
@@ -60,14 +83,9 @@ function activate(context) {
 
         // Resolve ${file} and ${fileBasename} variables if present
         if (config.program === '${file}' || config.program === '${fileBasename}') {
-          let editor = vscode.window.activeTextEditor;
+          const editor = getActiveOrVisibleBatchEditor();
 
-          // If active editor is not a batch file, check visible editors
-          if (!editor || (editor.document.languageId !== 'bat' && editor.document.languageId !== 'cmd')) {
-            editor = vscode.window.visibleTextEditors.find(e => e.document.languageId === 'bat' || e.document.languageId === 'cmd');
-          }
-
-          if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+          if (editor && isBatchDocument(editor.document)) {
             config.program = editor.document.uri.fsPath;
           } else {
             vscode.window.showErrorMessage('No active batch file found. Open a .bat or .cmd file first to use ${file}.');
@@ -94,11 +112,12 @@ function activate(context) {
   // Keep a backward-compatible `blinter.run` command for integrations/tests.
   context.subscriptions.push(vscode.commands.registerCommand('blinter.run', async () => {
     const editor = vscode.window.activeTextEditor;
-    if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+    if (editor && isBatchDocument(editor.document)) {
       try {
         await controller.lintDocument(editor.document);
-      } catch (e) {
-        // swallow - command should not throw in tests
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        controller.log(`[Run] Failed to lint document: ${message}`);
       }
     } else {
       vscode.window.showInformationMessage('Open a .bat or .cmd file to run Blinter.');
@@ -139,8 +158,13 @@ function activate(context) {
 
     proc.on('close', async (code) => {
       if (code === 0 && fs.existsSync(iniPath)) {
-        const doc = await vscode.workspace.openTextDocument(iniPath);
-        vscode.window.showTextDocument(doc);
+        try {
+          const doc = await vscode.workspace.openTextDocument(iniPath);
+          await vscode.window.showTextDocument(doc);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          controller.log(`[CreateConfig] Created file but failed to open: ${message}`);
+        }
       } else {
         controller.log(`[CreateConfig] Failed (code ${code}): ${stderr}`);
         vscode.window.showErrorMessage('Failed to create blinter.ini. Check the Blinter Output channel for details.');
@@ -199,6 +223,7 @@ class BlinterController {
 
     // Current lint run cancellation handle
     this._currentLintHandle = null;
+    this._lintRunId = 0;
 
     this.decorationType = this.createDecorationType();
 
@@ -268,6 +293,7 @@ class BlinterController {
     context.subscriptions.push(
       vscode.debug.onDidStartDebugSession((session) => {
         if (session.type === 'blinter-debug') {
+          this.lastExitCode = undefined;
           this.currentSessionId = session.id;
           this.webviewProvider?.ensureVisible();
         }
@@ -277,7 +303,10 @@ class BlinterController {
     context.subscriptions.push(
       vscode.debug.onDidTerminateDebugSession((session) => {
         if (session.type === 'blinter-debug') {
-          this.handleProcessExit(this.lastExitCode ?? 0);
+          if (this.status.state === 'running') {
+            this.updateStatus('errored', 'Debug session terminated');
+            this.flushDiagnostics();
+          }
           this.currentSessionId = undefined;
         }
       })
@@ -289,8 +318,11 @@ class BlinterController {
       vscode.workspace.onDidSaveTextDocument((doc) => {
         const config = vscode.workspace.getConfiguration('blinter');
         if (!config.get('enabled', true)) return;
-        if (config.get('runOn', 'onSave') === 'onSave' && (doc.languageId === 'bat' || doc.languageId === 'cmd')) {
-          this.lintDocument(doc);
+        if (config.get('runOn', 'onSave') === 'onSave' && isBatchDocument(doc)) {
+          void this.lintDocument(doc).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`[Linter] Save-triggered lint failed: ${message}`);
+          });
         }
       })
     );
@@ -301,12 +333,15 @@ class BlinterController {
         if (!config.get('enabled', true)) return;
         if (String(config.get('runOn', 'onSave')) !== 'onType') return;
         const doc = e.document;
-        if (doc.languageId !== 'bat' && doc.languageId !== 'cmd') return;
+        if (!isBatchDocument(doc)) return;
 
         const key = doc.uri.toString();
         if (debounceTimers.has(key)) clearTimeout(debounceTimers.get(key));
         const timeout = setTimeout(() => {
-          this.lintDocument(doc);
+          void this.lintDocument(doc).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(`[Linter] Type-triggered lint failed: ${message}`);
+          });
           debounceTimers.delete(key);
         }, config.get('debounceDelay', 500));
         debounceTimers.set(key, timeout);
@@ -341,11 +376,7 @@ class BlinterController {
     if (this._hasAutoShownOutputView) {
       return;
     }
-    if (!editor || !editor.document) {
-      return;
-    }
-    const lang = editor.document.languageId;
-    if (lang !== 'bat' && lang !== 'cmd') {
+    if (!editor || !isBatchDocument(editor.document)) {
       return;
     }
     this._hasAutoShownOutputView = true;
@@ -355,7 +386,7 @@ class BlinterController {
   /** Task 9: Update the blinter.ini status bar indicator */
   _updateConfigStatusBar() {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || (editor.document.languageId !== 'bat' && editor.document.languageId !== 'cmd')) {
+    if (!editor || !isBatchDocument(editor.document)) {
       this.statusBarItem.hide();
       return;
     }
@@ -386,7 +417,7 @@ class BlinterController {
   createQuickFixProvider() {
     return {
       provideCodeActions: (document, range, context) => {
-        if (document.languageId !== 'bat') {
+        if (!isBatchLanguageId(document.languageId)) {
           return [];
         }
 
@@ -404,7 +435,11 @@ class BlinterController {
             continue;
           }
 
-          const lineText = document.lineAt(range.start.line).text;
+          const lineIndex = diag.range && diag.range.start ? diag.range.start.line : range.start.line;
+          if (lineIndex < 0 || lineIndex >= document.lineCount) {
+            continue;
+          }
+          const lineText = document.lineAt(lineIndex).text;
           const match = /^\s*([A-Za-z0-9_@]+)(\b.*)$/m.exec(lineText);
           if (!match) {
             continue;
@@ -416,7 +451,7 @@ class BlinterController {
 
           const fix = new vscode.CodeAction('Normalize command casing', vscode.CodeActionKind.QuickFix);
           fix.edit = new vscode.WorkspaceEdit();
-          fix.edit.replace(document.uri, document.lineAt(range.start.line).range, fixed);
+          fix.edit.replace(document.uri, document.lineAt(lineIndex).range, fixed);
           fix.diagnostics = [diag];
           fix.isPreferred = true;
           actions.push(fix);
@@ -431,7 +466,7 @@ class BlinterController {
   createSuppressionProvider() {
     return {
       provideCodeActions: (document, range, context) => {
-        if (document.languageId !== 'bat') {
+        if (!isBatchLanguageId(document.languageId)) {
           return [];
         }
 
@@ -708,8 +743,8 @@ class BlinterController {
     // Resolve program path first to handle ${file} variables
     let programPath;
     if (args.program === '${file}' || args.program === '${fileBasename}') {
-      const editor = vscode.window.activeTextEditor;
-      if (editor && (editor.document.languageId === 'bat' || editor.document.languageId === 'cmd')) {
+      const editor = getActiveOrVisibleBatchEditor();
+      if (editor && isBatchDocument(editor.document)) {
         programPath = editor.document.uri.fsPath;
       } else {
         throw new Error('No active batch file found. Open a .bat or .cmd file first.');
@@ -791,12 +826,12 @@ class BlinterController {
   }
 
   addIssue(issue) {
-    const targetFile = issue.filePath || this.currentProgramPath;
+    const targetFile = normalizeFilePath(issue.filePath || this.currentProgramPath);
     if (!targetFile) {
       return;
     }
 
-    issue.filePath = path.normalize(targetFile);
+    issue.filePath = targetFile;
     if (!this.issuesByFile.has(issue.filePath)) {
       this.issuesByFile.set(issue.filePath, []);
     }
@@ -834,7 +869,7 @@ class BlinterController {
   }
 
   compareIssues(a, b) {
-    const order = { error: 0, warning: 1, info: 2 };
+    const order = { error: 0, warning: 1, information: 2, info: 2, hint: 3 };
     const severityDelta = (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
     if (severityDelta !== 0) {
       return severityDelta;
@@ -870,7 +905,7 @@ class BlinterController {
 
     const editors = vscode.window.visibleTextEditors;
     for (const editor of editors) {
-      const issues = this.issuesByFile.get(editor.document.uri.fsPath) || [];
+      const issues = this.issuesByFile.get(normalizeFilePath(editor.document.uri.fsPath)) || [];
       const criticalRanges = [];
 
       for (const issue of issues) {
@@ -935,7 +970,7 @@ class BlinterController {
     const definitions = [
       { id: 'errors', label: 'Errors', filter: (issue) => issue.severity === 'error' },
       { id: 'warnings', label: 'Warnings', filter: (issue) => issue.severity === 'warning' },
-      { id: 'info', label: 'Info', filter: (issue) => issue.severity === 'info' },
+      { id: 'info', label: 'Info', filter: (issue) => isInformationalSeverity(issue.severity) },
       { id: 'undefined', label: 'Undefined Variables', filter: (issue) => issue.classification === 'UndefinedVariable' },
       { id: 'critical', label: 'Critical Issues', filter: (issue) => issue.isCritical }
     ];
@@ -970,7 +1005,7 @@ class BlinterController {
   }
 
   provideHover(document, position) {
-    const issues = this.issuesByFile.get(document.uri.fsPath) || [];
+    const issues = this.issuesByFile.get(normalizeFilePath(document.uri.fsPath)) || [];
     const lineNumber = position.line + 1;
     const hits = issues.filter((issue) => issue.line === lineNumber);
     if (!hits.length) {
@@ -983,9 +1018,10 @@ class BlinterController {
     md.isTrusted = true;
 
     hits.forEach((issue) => {
-      md.appendMarkdown(`- **${escapeMarkdown(issue.classification || issue.severity.toUpperCase())}** — ${escapeMarkdown(issue.message)}\n`);
+      const title = issue.classification || String(issue.severity || 'info').toUpperCase();
+      md.appendMarkdown(`- **${escapeMarkdown(title)}** - ${escapeMarkdown(issue.message)}\n`);
       if (issue.variableTrace && issue.variableTrace.length) {
-        md.appendMarkdown(`  - Trace: ${escapeMarkdown(issue.variableTrace.join(' → '))}\n`);
+        md.appendMarkdown(`  - Trace: ${escapeMarkdown(issue.variableTrace.join(' -> '))}\n`);
       }
     });
 
@@ -993,8 +1029,8 @@ class BlinterController {
   }
 
   clearDocument(uri) {
-    const filePath = uri.fsPath;
-    if (!this.issuesByFile.has(filePath)) {
+    const filePath = normalizeFilePath(uri.fsPath);
+    if (!filePath || !this.issuesByFile.has(filePath)) {
       return;
     }
     this.issuesByFile.delete(filePath);
@@ -1023,22 +1059,22 @@ class BlinterController {
     }
   }
 
-  revealLocation(filePath, line) {
+  async revealLocation(filePath, line) {
     if (!filePath) {
       return;
     }
     const uri = vscode.Uri.file(filePath);
-    vscode.workspace.openTextDocument(uri).then((doc) => {
-      vscode.window.showTextDocument(doc, { preview: false }).then((editor) => {
-        const targetLine = Math.max(0, (line || 1) - 1);
-        const position = new vscode.Position(targetLine, 0);
-        const range = new vscode.Range(position, position);
-        editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-        editor.selection = new vscode.Selection(position, position);
-      });
-    }, () => {
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, { preview: false });
+      const targetLine = Math.max(0, (line || 1) - 1);
+      const position = new vscode.Position(targetLine, 0);
+      const range = new vscode.Range(position, position);
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+      editor.selection = new vscode.Selection(position, position);
+    } catch {
       vscode.window.showWarningMessage(`Unable to open ${filePath}`);
-    });
+    }
   }
 
   log(message) {
@@ -1046,7 +1082,7 @@ class BlinterController {
   }
 
   async lintDocument(document) {
-    if (document.languageId !== 'bat' && document.languageId !== 'cmd') {
+    if (!isBatchDocument(document)) {
       return;
     }
 
@@ -1055,7 +1091,7 @@ class BlinterController {
       return;
     }
 
-    const filePath = document.uri.fsPath;
+    const filePath = normalizeFilePath(document.uri.fsPath);
     if (!filePath) {
       return;
     }
@@ -1066,8 +1102,6 @@ class BlinterController {
       this._currentLintHandle = null;
     }
 
-    const exePath = resolveBlinterExePath(this.context);
-
     const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
       ? vscode.workspace.workspaceFolders[0].uri.fsPath
       : path.dirname(filePath);
@@ -1075,102 +1109,97 @@ class BlinterController {
     this.currentProgramPath = filePath;
     this.currentWorkspaceRoot = workspaceFolder;
     this.variableIndex = buildVariableIndexFromFile(filePath, fs);
-
-    const cliArgs = buildArgs(config, filePath);
-    const fullArgs = [...cliArgs];
-
-    this.log(`[Linter] Running: ${exePath} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+    this.updateStatus('running', path.basename(filePath));
 
     // Clear previous diagnostics for this file
     this.diagnostics.delete(document.uri);
-    const fileIssues = this.issuesByFile.get(filePath) || [];
-    if (fileIssues.length > 0) {
-      this.issuesByFile.set(filePath, []);
-    }
+    this.issuesByFile.set(filePath, []);
 
+    let exePath;
     try {
-      let stdout = '';
-      let stderr = '';
-
-      const encoding = config.get('encoding', 'utf8') || 'utf8';
-      const proc = cp.spawn(exePath, fullArgs, {
-        cwd: path.dirname(filePath),
-        windowsHide: true
-      });
-
-      if (proc.stdout && typeof proc.stdout.setEncoding === 'function') {
-        try { proc.stdout.setEncoding(encoding); } catch { proc.stdout.setEncoding('utf8'); }
-      }
-      if (proc.stderr && typeof proc.stderr.setEncoding === 'function') {
-        try { proc.stderr.setEncoding(encoding); } catch { proc.stderr.setEncoding('utf8'); }
-      }
-
-      this._currentLintHandle = {
-        kill: () => { if (proc && !proc.killed) { try { proc.kill(); } catch { } } }
-      };
-
-      if (proc.stdout) proc.stdout.on('data', (data) => { stdout += String(data); });
-      if (proc.stderr) proc.stderr.on('data', (data) => { stderr += String(data); });
-
-      proc.on('error', (err) => {
-        this._currentLintHandle = null;
-        const msg = err && err.message ? err.message : String(err);
-        this.log(`[Linter] Process error: ${msg}`);
-        vscode.window.showErrorMessage(`Failed to run Blinter: ${msg}`);
-      });
-
-      proc.on('close', () => {
-        this._currentLintHandle = null;
-
-        if (stderr && stderr.trim()) {
-          this.log(`[Linter] stderr: ${stderr}`);
-        }
-
-        const parsed = parseBlinterOutput(stdout);
-        for (const item of parsed) {
-          const lineNumber = Math.max(0, (item.line || 1) - 1);
-          const severityMap = {
-            'error': vscode.DiagnosticSeverity.Error,
-            'warning': vscode.DiagnosticSeverity.Warning,
-            'information': vscode.DiagnosticSeverity.Information,
-            'hint': vscode.DiagnosticSeverity.Hint
-          };
-          const range = new vscode.Range(
-            new vscode.Position(lineNumber, 0),
-            new vscode.Position(lineNumber, Number.MAX_SAFE_INTEGER)
-          );
-          const diag = new vscode.Diagnostic(
-            range,
-            `${item.description} (${item.code})`,
-            severityMap[item.severity] || vscode.DiagnosticSeverity.Information
-          );
-          diag.code = item.code;
-          diag.source = 'blinter';
-
-          if (!this.issuesByFile.has(filePath)) {
-            this.issuesByFile.set(filePath, []);
-          }
-          this.issuesByFile.get(filePath).push({
-            id: `lint-${item.line}-${item.code}`,
-            severity: item.severity,
-            classification: 'Linter',
-            isCritical: item.severity === 'error' || item.severity === 'warning',
-            message: item.description,
-            code: item.code,
-            filePath: filePath,
-            line: item.line,
-            range: {
-              start: { line: lineNumber, character: 0 },
-              end: { line: lineNumber, character: Number.MAX_SAFE_INTEGER }
-            }
-          });
-        }
-
-        this.flushDiagnostics();
-      });
-
+      exePath = resolveBlinterExePath(this.context);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      this.log(`[Linter] Failed to resolve executable: ${message}`);
+      this.updateStatus('errored', message);
+      vscode.window.showErrorMessage(`Failed to resolve Blinter executable: ${message}`);
+      return;
+    }
+
+    const fullArgs = buildArgs(config, filePath);
+    this.log(`[Linter] Running: ${exePath} ${fullArgs.map((a) => JSON.stringify(a)).join(' ')}`);
+
+    const runId = this._lintRunId + 1;
+    this._lintRunId = runId;
+
+    const stdoutLines = [];
+    let stderr = '';
+
+    const finalize = (exitCodeRaw) => {
+      if (!this._currentLintHandle || this._currentLintHandle.runId !== runId) {
+        return;
+      }
+      this._currentLintHandle = null;
+
+      if (stderr && stderr.trim()) {
+        this.log(`[Linter] stderr: ${stderr}`);
+      }
+
+      const parsed = parseBlinterOutput(stdoutLines.join('\n'));
+      const issues = parsed.map((item, index) => {
+        const rawLine = typeof item.line === 'number' ? item.line : 1;
+        const line = Math.max(1, rawLine);
+        const lineIndex = line - 1;
+        return {
+          id: `lint-${runId}-${index + 1}`,
+          severity: item.severity,
+          classification: 'Linter',
+          isCritical: item.severity === 'error' || item.severity === 'warning',
+          message: item.description,
+          code: item.code,
+          filePath,
+          line,
+          range: {
+            start: { line: lineIndex, character: 0 },
+            end: { line: lineIndex, character: Number.MAX_SAFE_INTEGER }
+          }
+        };
+      });
+
+      this.issuesByFile.set(filePath, issues);
+      const exitCode = typeof exitCodeRaw === 'number' ? exitCodeRaw : 1;
+      this.handleProcessExit(exitCode);
+    };
+
+    try {
+      const handle = spawnBlinter({
+        exePath,
+        config,
+        filePath,
+        cwd: path.dirname(filePath),
+        onLine: (line) => {
+          stdoutLines.push(line);
+        },
+        onStderr: (text) => {
+          stderr += String(text);
+        },
+        onExit: (exitCode) => {
+          finalize(exitCode);
+        }
+      });
+
+      this._currentLintHandle = {
+        runId,
+        kill: () => handle.kill()
+      };
+    } catch (error) {
+      if (this._currentLintHandle && this._currentLintHandle.runId === runId) {
+        this._currentLintHandle = null;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.log(`[Linter] Failed to start process: ${message}`);
+      this.updateStatus('errored', message);
+      vscode.window.showErrorMessage(`Failed to run Blinter: ${message}`);
     }
   }
 }
@@ -1210,8 +1239,13 @@ class BlinterInlineDebugAdapter {
         fake.kill = () => { fake.killed = true; };
         fake.killed = false;
         fake.pid = 12345;
-        // simulate immediate close in tests after a short tick
-        setTimeout(() => fake.emit('close', 0), 10);
+        // Emit representative lint output before closing so integration tests
+        // can validate diagnostics/suppressions without invoking native binaries.
+        setTimeout(() => {
+          fake.stdout.emit('data', 'Line 2: Errorlevel handling difference between .bat/.cmd (W028)\n');
+          fake.stdout.emit('data', 'Line 1: BAT extension used instead of CMD for newer Windows (S007)\n');
+          fake.emit('close', 0);
+        }, 10);
         return fake;
       }
       return cp.spawn(command, args, options);
@@ -1262,7 +1296,7 @@ class BlinterOutputViewProvider {
 
     webview.onDidReceiveMessage((msg) => {
       if (msg?.command === 'reveal' && msg.path) {
-        this.controller.revealLocation(msg.path, msg.line);
+        void this.controller.revealLocation(msg.path, msg.line);
         return;
       }
       if (msg?.command === 'removeSuppressions') {
@@ -1381,13 +1415,12 @@ class BlinterOutputViewProvider {
         overflow: hidden;
       }
       .item {
-        display: flex;
-        gap: 8px;
+        display: block;
         padding: 6px 8px;
         font-size: 12px;
+        line-height: 1.4;
         cursor: pointer;
         border-bottom: 1px solid var(--vscode-list-hoverBackground);
-        align-items: flex-start;
       }
       .item:last-child {
         border-bottom: none;
@@ -1395,25 +1428,24 @@ class BlinterOutputViewProvider {
       .item:hover {
         background-color: var(--vscode-list-hoverBackground);
       }
-      .line {
-        font-family: var(--vscode-editor-font-family);
-        color: var(--vscode-textLink-foreground);
-        min-width: 72px;
-        flex: 0 0 auto;
-        white-space: nowrap;
-      }
-      .message {
-        min-width: 0;
-        flex: 1 1 auto;
+      .item-text {
+        display: inline;
         white-space: normal;
         overflow-wrap: anywhere;
         word-break: break-word;
+      }
+      .tag {
+        font-family: var(--vscode-editor-font-family);
+        font-weight: 600;
       }
       .severity-error {
         color: var(--vscode-errorForeground);
       }
       .severity-warning {
         color: var(--vscode-editorWarning-foreground);
+      }
+      .severity-info {
+        color: var(--vscode-editorInfo-foreground);
       }
       .empty {
         font-size: 12px;
@@ -1448,7 +1480,7 @@ class BlinterOutputViewProvider {
         }
         switch (status.state) {
           case 'running':
-            return 'Running analysis' + (status.detail ? ' — ' + escapeHtml(status.detail) : '');
+            return 'Running analysis' + (status.detail ? ' - ' + escapeHtml(status.detail) : '');
           case 'completed':
             return status.detail ? escapeHtml(status.detail) : 'Analysis complete';
           case 'errored':
@@ -1484,11 +1516,20 @@ class BlinterOutputViewProvider {
           parts.push('</div>');
           parts.push('<div class="group-items">');
           for (const item of group.items) {
-            const severityClass = item.severity ? 'severity-' + escapeHtml(item.severity) : '';
-            const displayLine = escapeHtml(item.fileName) + ':' + escapeHtml(item.line || 0);
+            const severityRaw = String(item.severity || '').toLowerCase();
+            const severityClass = severityRaw === 'error'
+              ? 'severity-error'
+              : severityRaw === 'warning'
+                ? 'severity-warning'
+                : 'severity-info';
+            const tagLabel = severityRaw === 'error'
+              ? 'ERROR'
+              : severityRaw === 'warning'
+                ? 'WARN'
+                : 'INFO';
+            const displayLine = 'L' + escapeHtml(item.line || 0);
             parts.push('<div class="item" data-path="' + escapeHtml(item.filePath) + '" data-line="' + escapeHtml(item.line || 0) + '">');
-            parts.push('<span class="line ' + severityClass + '">' + displayLine + '</span>');
-            parts.push('<span class="message">' + escapeHtml(item.message) + '</span>');
+            parts.push('<span class="item-text"><span class="tag ' + severityClass + '">[' + tagLabel + ']</span>: ' + displayLine + ' ' + escapeHtml(item.message) + '</span>');
             parts.push('</div>');
           }
           parts.push('</div></div>');

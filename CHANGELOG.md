@@ -1,9 +1,12 @@
-# Change Log
+# Changelog
 
-All notable changes to the "blinter" extension will be documented in this file.
+All notable changes to this project are documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [v1.26.15680]
 
-## [Unreleased]
-
-- Initial release
+- new icon
+- fixed blinter output view
+- fixed qiuck fix
+- reverted .exe bundling
+- exposed more settings for `blinter-debug` and output view
+- fixed lauch config generation'

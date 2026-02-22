@@ -1,12 +1,23 @@
 import globals from "globals";
 
-export default [{
-    files: ["**/*.js"],
+export default [
+{
     ignores: [
         "node_modules/**",
         ".vscode-test/**",
         ".vscode/**",
+        "out/**",
+        "releases/**",
+        "vendor/**",
         "**/*.vsix"
+    ]
+},
+{
+    files: [
+        "extension.js",
+        "lib/**/*.js",
+        "test/**/*.js",
+        "tools/**/*.js"
     ],
     languageOptions: {
         globals: {
@@ -28,4 +39,5 @@ export default [{
         "constructor-super": "warn",
         "valid-typeof": "warn",
     },
-}];
+}
+];

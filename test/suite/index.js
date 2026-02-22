@@ -14,7 +14,7 @@ function run() {
   try {
     require('mocha/lib/interfaces/bdd')(mocha.suite);
     require('mocha/lib/interfaces/tdd')(mocha.suite);
-  } catch (e) {
+  } catch {
     // Fallback: alias describe/it to suite/test if interfaces cannot be loaded
     if (typeof global.describe === 'function') global.suite = global.describe;
     if (typeof global.it === 'function') global.test = global.it;
@@ -25,7 +25,7 @@ function run() {
   return new Promise((resolve, reject) => {
     try {
       // Use glob.sync to avoid callback vs ESM interop issues
-      const files = glob.sync('**/**.test.js', { cwd: testsRoot });
+      const files = glob.sync('**/*.test.js', { cwd: testsRoot });
       files.forEach(f => mocha.addFile(path.resolve(testsRoot, f)));
 
       mocha.run(failures => {

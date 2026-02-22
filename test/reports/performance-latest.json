@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-02-22T14:36:32.066Z",
+  "thresholdsMs": {
+    "parser": 15000,
+    "analysis": 15000
+  },
+  "parser": {
+    "durationMs": 8.100100000000001,
+    "issueCount": 3000
+  },
+  "analysis": {
+    "durationMs": 47.368399999999994,
+    "totalIssues": 15000
+  }
+}

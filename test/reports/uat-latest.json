@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-02-22T14:36:31.407Z",
+  "status": "pass",
+  "checks": {
+    "commands": [
+      "blinter.run",
+      "blinter.createConfig",
+      "blinter.removeAllSuppressions"
+    ],
+    "settings": [
+      "blinter.enabled",
+      "blinter.runOn",
+      "blinter.debounceDelay",
+      "blinter.quickFixCodes",
+      "blinter.suppressionCommentStyle"
+    ],
+    "webviewRemoveSuppressionsButton": true,
+    "webviewRemoveSuppressionsHandler": true,
+    "checklistPresent": true
+  }
+}

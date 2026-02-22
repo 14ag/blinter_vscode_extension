@@ -1,38 +1,67 @@
-# Blinter — the IDE Batch Linter
+# Blinter for VS Code
 
-Blinter integrates the vendored Blinter linter EXE into the IDE's **Run & Debug** workflow so Windows batch files (`.bat`, `.cmd`) get diagnostics, suppression comments, and actionable quick fixes as you work.
+Blinter is a linter and debug companion for batch scripts (`.bat`, `.cmd`). It runs the bundled `Blinter.exe` and surfaces diagnostics in VS Code Problems, hover tooltips, decorations, and a dedicated output view
 
-## What it does
-- Registers a `blinter-debug` debug type that invokes the vendored `Blinter.exe` and streams its output into the IDE.
-- Parses stdout incrementally to keep the **Problems** panel, hover tooltips, and inline critical issue decorations in sync.
-- Exposes a **Blinter Output** view in the Run & Debug sidebar that groups diagnostics and lets you jump straight to problem lines.
-- Provides command-casing quick fixes (configurable) and detailed variable traces for undefined-variable diagnostics.
-- Offers **suppress on this line** quick fixes that insert `LINT:IGNORE` comments.
-- Shows a status bar indicator for `blinter.ini` in the workspace.
-- Provides a **Blinter: Create Config File** command to bootstrap a `blinter.ini` in your workspace.
+## At a glance
 
-## Requirements (Prerequisites)
+- Windows only (`win32`)
+- Works with `.bat` and `.cmd`
+- Run and debug through `blinter-debug` (F5)
+- Quick fixes for suppression comments and command casing
 
-- **Windows OS** (required). Blinter specifically targets Windows batch scripting.
-- **No Python Required**. The extension bundles the core linter as a standalone executable.
-- See the Blinter project for more details: [https://github.com/tboy1337/Blinter](https://github.com/tboy1337/Blinter) (Core v1.0.112 @ 3564f35)
+## Release notes summary
 
-## Developer Setup (Cloning)
+- For user-facing changes, see [CHANGELOG.md](./CHANGELOG.md).
 
-If you are cloning this repository for development, you must pull the core Blinter linter sources into the `vendor/` folder (which is ignored by Git to keep the repository size manageable).
+## Table of contents
 
-1. Execute the `setup-vendor.bat` script located at the repository root.
-2. This script downloads and extracts the validated version of the core linter (**v1.0.112 @ 3564f35**) into `vendor/Blinter`.
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Core features](#core-features)
+- [Commands](#commands)
+- [Configuration](#configuration)
+- [Suppression workflow](#suppression-workflow)
+- [Output and troubleshooting](#output-and-troubleshooting)
+- [Developer setup](#developer-setup)
+- [Testing](#testing)
+- [Packaging](#packaging)
+- [License](#license)
 
-> [!NOTE]
-> The extension package (`.vsix`) automatically includes these sources, so regular users do not need to perform this setup.
+## Installation
+
+### Option 1: Install from VSIX
+
+1. Build or download a `.vsix` package.
+2. In VS Code, open Extensions.
+3. Select the `...` menu and choose `Install from VSIX...`.
+4. Select the VSIX file.
+
+### Option 2: Run from source (development)
+
+1. Clone this repository.
+2. Install dependencies:
+
+```powershell
+npm ci
+```
+
+3. Ensure vendor assets are present:
+
+```powershell
+.\setup-vendor.bat
+```
+
+4. Press `F5` in VS Code to launch Extension Development Host.
 
 ## Quick start
-1. Open a workspace that contains the batch file you want to lint.
-2. Open the **Run & Debug** view (`Ctrl+Shift+D`) and choose the `Launch Batch (Blinter)` configuration. If prompted, allow the IDE to create a `launch.json` using the snippet below.
-4. Press **Run** (F5). Blinter runs immediately, populating the Problems panel, in-editor highlights, and the Blinter Output view.
 
-Example `launch.json` entry:
+1. Open a workspace containing a `.bat` or `.cmd` file.
+2. Open Run and Debug (`Ctrl+Shift+D`).
+3. Use `Launch Batch (Blinter)` and run with `F5`.
+4. Review diagnostics in Problems and the `Blinter Output` view.
+5. Use Quick Fix (`Ctrl+.`) for suppression/comment assistance.
+
+Example `launch.json`:
 
 ```json
 {
@@ -48,54 +77,115 @@ Example `launch.json` entry:
 }
 ```
 
-## Settings
+## Features
 
+- Registers `blinter-debug` for Run and Debug workflows
+- Streams diagnostics while the script runs
+- Highlights critical issues in-editor
+- Shows grouped issue summaries in `Blinter Output`
+- Adds quick fixes for:
+  - command casing normalization
+  - suppression comments (`LINT:IGNORE`)
+  - optional Copilot handoff
+- Supports `blinter.ini` creation and status-bar visibility
 
-### Linting behaviour
-- **`blinter.enabled`** (boolean) — Enable/disable Blinter (`true`).
-- **`blinter.runOn`** (`"onSave"` | `"onType"`) — When to auto-lint (`"onSave"`).
-- **`blinter.debounceDelay`** (number) — Debounce in ms for `onType` runs (`500`).
-- **`blinter.followCalls`** (boolean) — Pass `--follow-calls` to trace CALL statements and eliminate false-positive undefined-variable warnings (`false`).
-- **`blinter.minSeverity`** (`"all"` | `"performance"` | `"style"` | `"warning"` | `"error"`) — Suppress diagnostics below this severity (`"all"`).
-- **`blinter.enabledRules`** (string[]) — Exclusive list of rule codes to enable. Empty = all rules (`[]`).
-- **`blinter.disabledRules`** (string[]) — Rule codes to disable (`[]`).
-- **`blinter.useConfigFile`** (boolean) — Let Blinter read `blinter.ini` from the workspace root (`true`). Set to `false` to pass `--no-config`.
-- **`blinter.maxLineLength`** (number) — Maximum line length for rule S011 (`100`).
-- **`blinter.noRecursive`** (boolean) — When linting a directory, analyze only the top-level folder (`false`).
+## Commands
+
+- `Blinter: Run`
+- `Blinter: Run and Debug`
+- `Blinter: Create Config File`
+- `Blinter: Ask Copilot About Diagnostic`
+- `Blinter: Remove All Suppressions`
+
+## Configuration
+
+### Linting behavior
+
+- `blinter.enabled` (`boolean`, default `true`)
+- `blinter.runOn` (`onSave | onType`, default `onSave`)
+- `blinter.debounceDelay` (`number`, default `500`)
+- `blinter.followCalls` (`boolean`, default `false`)
+- `blinter.minSeverity` (`all | performance | style | warning | error`, default `all`)
+- `blinter.enabledRules` (`string[]`, default `[]`)
+- `blinter.disabledRules` (`string[]`, default `[]`)
+- `blinter.useConfigFile` (`boolean`, default `true`)
+- `blinter.maxLineLength` (`number`, default `100`)
+- `blinter.noRecursive` (`boolean`, default `false`)
 
 ### Presentation
-- **`blinter.quickFixCodes`** (string[]) — Diagnostic codes that offer command-casing quick fixes.
-- **`blinter.criticalHighlightColor`** (string) — Hex colour for critical issue highlights during debug sessions (`#5a1124`).
-- **`blinter.encoding`** (string) — Encoding for Blinter output (`utf8`).
+
+- `blinter.quickFixCodes` (`string[]`)
+- `blinter.criticalHighlightColor` (`string`, default `#5a1124`)
+- `blinter.encoding` (`string`, default `utf8`)
 
 ### Suppression comments
-- **`blinter.suppressionCommentStyle`** (`"REM"` | `"::"`) — Comment style for inserted `LINT:IGNORE` comments (`"REM"`).
 
-## Suppression quick fixes
+- `blinter.suppressionCommentStyle` (`REM | ::`, default `REM`)
+- `blinter.showAskCopilotQuickFix` (`boolean`, default `false`)
 
-When a Blinter diagnostic appears on a line, the **Quick Fix** (`Ctrl+.`) menu shows:
+## Suppression workflow
 
-- **Blinter: Suppress [CODE] on this line** - inserts `REM LINT:IGNORE [CODE]` on a dedicated line above the flagged line.
-- Optional: **Blinter: Ask Copilot about [CODE]** - enable `blinter.showAskCopilotQuickFix` to add this action.
+When a Blinter diagnostic appears:
 
-Suppression merges codes if a `LINT:IGNORE` comment already exists directly above the target line. Multiple codes are joined with `, `.
+1. Use Quick Fix (`Ctrl+.`).
+2. Choose `Blinter: Suppress ... on this line`.
+3. Blinter inserts a `LINT:IGNORE` comment above the target line.
+4. Existing `LINT:IGNORE` codes on the previous line are merged.
 
-## Blinter: Create Config File command
+You can remove all suppression comments via:
 
-Run **Blinter: Create Config File** from the Command Palette to generate a `blinter.ini` in the workspace root using the vendored linter. The file is opened automatically after creation.
+- Command Palette: `Blinter: Remove All Suppressions`
+- `Blinter Output` view title button
 
-The status bar shows `$(gear) blinter.ini` when a config file exists (click to open it), or `$(circle-slash) No blinter.ini` when it doesn't (click to create one). The indicator is only visible when a `.bat` or `.cmd` file is active.
+## Output and troubleshooting
 
-## Output & troubleshooting
-- **View → Output → Blinter** shows the exact command invocation, stdout, and stderr.
-- Diagnostics clear automatically when a session ends; start a new Run & Debug session to refresh analysis.
+- Open `View -> Output -> Blinter` for command, stdout, and stderr logs.
+- If diagnostics do not appear:
+  - confirm `blinter.enabled` is true
+  - confirm file language is `bat` or `cmd`
+  - verify the bundled executable exists under `vendor/Blinter/Blinter.exe`
+- If the debug session closes early, inspect output logs first.
 
-## Packaging & publishing
-- Run `build.bat` to build a distributable VSIX. The script regenerates icon assets and runs `vsce package`.
-- See `PACKAGING.md` for end-to-end packaging guidance.
+## Developer setup
+
+The repository keeps vendor artifacts out of source control where possible. Use:
+
+```powershell
+.\setup-vendor.bat
+```
+
+to populate the required core assets under `vendor/Blinter`.
+
+## Testing
+
+Common commands:
+
+```powershell
+npm run lint
+npm run test:unit
+npm run test:integration
+npm run test:matrix
+```
+
+`test:matrix` runs unit, integration, system packaging, UAT checks, regression, performance, security, smoke, sanity, and exploratory suites with reports in `test/reports/`.
+
+## Packaging
+
+Build a VSIX package:
+
+```powershell
+.\build.bat
+```
+
+or
+
+```powershell
+npm run package:vsix
+```
+
+See `PACKAGING.md` for release flow details.
 
 ## License
-- MIT — see `LICENSE`.
-- Blinter (core linter): tboy1337 — [https://github.com/tboy1337/Blinter](https://github.com/tboy1337/Blinter)
 
-Questions or feature requests? Open an issue or tweak the Blinter Output webview to suit your team's workflow.
+- Project: MIT (`LICENSE`)
+- Blinter core linter: https://github.com/tboy1337/Blinter

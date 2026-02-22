@@ -61,4 +61,13 @@ Line 1: BAT extension used instead of CMD for newer Windows (S007)
         assert.strictEqual(issues[1].severity, 'information');
         assert.strictEqual(issues[1].line, 12);
     });
+
+    it('maps detailed SEC rules to warning severity', () => {
+        const stdout = 'Line 9: UNC path detected (SEC001)';
+        const issues = parseBlinterOutput(stdout);
+        assert.strictEqual(issues.length, 1);
+        assert.strictEqual(issues[0].severity, 'warning');
+        assert.strictEqual(issues[0].code, 'SEC001');
+        assert.strictEqual(issues[0].line, 9);
+    });
 });

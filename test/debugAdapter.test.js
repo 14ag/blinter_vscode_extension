@@ -93,7 +93,7 @@ describe('InlineDebugAdapterSession', () => {
     assert.strictEqual(exitedEvent[0].body.exitCode, 0);
 
     adapter.dispose();
-    assert.strictEqual(adapter.inner, undefined);
+    assert.strictEqual(adapter.process, undefined);
   });
 });
 
