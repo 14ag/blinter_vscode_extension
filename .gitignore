@@ -5,6 +5,7 @@ vendor/
 *.txt
 *.vscode
 *.vsix
+.kiro/
 releases/
 package0.json
 release_notes.md

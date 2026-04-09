@@ -299,13 +299,14 @@
     "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"
   },
   "devDependencies": {
-    "@types/vscode": "^1.90.0",
     "@types/mocha": "^10.0.10",
-    "@vscode/vsce": "^2.1.0",
     "@types/node": "22.x",
-    "eslint": "^9.36.0",
+    "@types/vscode": "^1.90.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^2.1.0",
+    "eslint": "^9.36.0",
+    "fast-check": "^4.6.0",
     "mocha": "^10.2.0",
     "vsce": "^2.10.0"
   }

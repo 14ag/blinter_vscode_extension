@@ -1319,7 +1319,7 @@ class BlinterOutputViewProvider {
         // ignore
       }
     }
-    vscode.commands.executeCommand('workbench.view.debug');
+    // Removed focus-stealing command to allow webview visibility without forcing focus switch
   }
 
   update(data) {
